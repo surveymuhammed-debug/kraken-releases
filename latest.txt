@@ -1,0 +1,7 @@
+# Kraken update manifest - published 2026-09-14 06:15
+# Read by the Update button. file is relative to this manifest.
+version = 2.8.0
+file    = 2.8.0/MEPKit.dll
+sha256  = 5ddaa217949b0b78bf3eb43a1ef1e7b33f5072981ac630a0736bf3eb305129d5
+revit   = 2025
+notes   = Kraken 2.8.0 | accounts and licensing groundwork (inactive until enabled) | update button improvements
