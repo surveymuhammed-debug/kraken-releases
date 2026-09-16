@@ -1,0 +1,6 @@
+{
+  "payloadText": "{\"schema\":1,\"issued\":\"2026-09-16\",\"policy\":{\"mode\":\"warn\",\"default\":\"trial\",\"trialDays\":30,\"graceDays\":14},\"users\":{}}",
+  "sig": "cKwnHtDEP1yzHlHjrfj+yO+iw8g1ZE2+TvJnPhW4cmm+eNODTwJw+Agk0p/igmMvVHqov1NGNNxk9xh7viROAw==",
+  "alg": "ES256",
+  "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEERq97fwsmUd39x59XsTz//WNBoEmOfiZWPo8gNMs6gGTl/bIa1af7GMkrxcLRMjVpV09f6vG/QUQX8feUJQccQ=="
+}
