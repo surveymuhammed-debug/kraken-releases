@@ -1,7 +1,7 @@
-# Kraken update manifest - published 2026-09-16 16:52
+# Kraken update manifest - published 2026-09-17 10:51
 # Read by the Update button. file is relative to this manifest.
-version = 2.8.4
-file    = 2.8.4/MEPKit.dll
-sha256  = 343b98b34557f3b9d25c30563df7495d59e5932c81d16e88452dcd10bb8e038f
+version = 2.8.6
+file    = 2.8.6/MEPKit.dll
+sha256  = 1032df80e077ce795a8c33a59e277fb227eaad3a245cfa02b28828fc5fd11851
 revit   = 2025
-notes   = Kraken 2.8.4 | trial periods now really end | activation required | forced-update support
+notes   = Kraken 2.8.6 | hardening: signed forced-update, seat binding fixed, clock and replay protection, built-in fallback feed
