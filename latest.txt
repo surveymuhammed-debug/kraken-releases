@@ -1,7 +1,10 @@
-# Kraken update manifest - published 2026-09-17 10:51
+# Kraken update manifest - published 2026-09-17 11:32
 # Read by the Update button. file is relative to this manifest.
-version = 2.8.6
-file    = 2.8.6/MEPKit.dll
-sha256  = 1032df80e077ce795a8c33a59e277fb227eaad3a245cfa02b28828fc5fd11851
-revit   = 2025
-notes   = Kraken 2.8.6 | hardening: signed forced-update, seat binding fixed, clock and replay protection, built-in fallback feed
+version = 2.8.8
+file    = 2.8.8/MEPKit.dll
+sha256  = 527077f06d955fa3144d45f59837d1447f2911a1876278cc60a331bedf5a69e9
+# Revit 2021-2024 run .NET Framework and need their own build.
+file48  = 2.8.8/MEPKit-net48.dll
+sha48   = dddff7d201eda13797c262c74d5cbe24e8d84a4b40f8899442be43d5e6992862
+revit   = 2021
+notes   = Kraken 2.8.8 | one Update now brings every Revit version on the machine level
