@@ -7,5 +7,4 @@ sha256  = 93942d5b61c5d1e917a69f06c083a91be4a4e75c7a6154a9df22a45a0cfa403a
 file48  = 2.9.1/MEPKit-net48.dll
 sha48   = 707ee3ac0916efce362dc1db2d20f25a9dc545240573e0f57e883d448fb6ebd6
 revit   = 2021
-notes   = Kraken 2.9.1 | One Update now installs onto EVERY Revit on this PC (2023-2027), including versions that never had Kraken | Required update
-required = 2.9.1
+notes   = Kraken 2.9.1 | One Update now installs onto every Revit on this PC (2023-2027), including versions that never had Kraken
