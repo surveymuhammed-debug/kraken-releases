@@ -248,6 +248,19 @@
         </div>
       </section>
 
+      <!-- SIMULATE -->
+      <section class="card">
+        <h2>Simulate</h2>
+        <div class="body">
+          <p class="hint" style="margin-top:0">Check what any email gets under the current policy and seats — before you sign.</p>
+          <div class="row">
+            <div class="field"><input id="simEmail" list="seatEmails" placeholder="email@example.com" autocomplete="off"></div>
+            <button class="btn sm primary" id="simBtn">Check</button>
+          </div>
+          <div id="simResult" style="margin-top:12px"></div>
+        </div>
+      </section>
+
       <!-- SIGNING KEY -->
       <section class="card">
         <h2>Signing key</h2>
@@ -1006,6 +1019,8 @@ function bindInputs(){
   $("#msgDownload").onclick = ()=>{ if(lastMsgFile){ downloadFile("messages.json", JSON.stringify(lastMsgFile,null,2)); logEvent("file","Downloaded messages.json"); } };
   $("#msgCopy").onclick = ()=>{ if(lastMsgFile) copy(JSON.stringify(lastMsgFile,null,2)); };
 
+  $("#simBtn").onclick = simulate;
+  $("#simEmail").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); simulate(); } });
   $("#exportAll").onclick = exportAll;
   $("#importAll").onclick = ()=>{ $("#backupText").value=""; $("#backupDlg").showModal(); };
   $("#backupCancel").onclick = ()=>$("#backupDlg").close();
@@ -1047,6 +1062,33 @@ async function fetchReg(){
     if(!regEmails.length) alert("Fetched, but found no emails in the response.");
     renderReg();
   }catch(e){ alert("Couldn't fetch (often CORS). Open the sheet, copy the emails, and paste them instead.\n\n"+e.message); }
+}
+
+/* ---------- simulate a verdict ---------- */
+function simulate(){
+  const email = $("#simEmail").value.trim().toLowerCase();
+  const box = $("#simResult");
+  if(!email || !email.includes("@")){ box.innerHTML='<div class="note warn">Enter an email to check.</div>'; return; }
+  const seat = state.seats.find(s=>s.email===email);
+  const plan = seat ? seat.plan : state.def;
+  const source = seat ? "a listed seat" : "the default ("+esc(state.def)+")";
+  const expired = state.expires && state.expires < todayISO();
+  const td = int(state.trialDays);
+  let verdict, cls;
+  if(state.mode==="off"){ verdict="Runs — licensing is OFF for everyone"; cls="ok"; }
+  else if(plan==="blocked"){
+    if(state.mode==="enforce"){ verdict="BLOCKED — cannot run the tools"; cls="danger"; }
+    else { verdict="Would be blocked — but WARN mode still lets them run (and records it)"; cls="warn"; }
+  } else if(plan==="trial"){
+    verdict = td===0 ? "Trial of 0 days — effectively expired, would be blocked once enforced"
+                     : `Runs — TRIAL, ${td} day(s) from first use on each machine`;
+    cls = td===0 ? "warn" : "ok";
+  } else { verdict = `Runs — ${plan.toUpperCase()}, full access`; cls="ok"; }
+  let html = `<div class="note ${cls}"><b>${esc(verdict)}</b></div>`;
+  html += `<div class="hint" style="margin-top:8px">Plan: <b>${esc(plan)}</b> · from ${source} · mode <b>${esc(state.mode)}</b></div>`;
+  if(expired) html += `<div class="note danger" style="margin-top:8px">The access file's expiry date is in the past — Kraken would treat the whole file as invalid, overriding the above.</div>`;
+  html += `<p class="hint" style="margin-top:8px">Mirrors the policy you're publishing; the add-in enforces it on each machine.</p>`;
+  box.innerHTML = html;
 }
 
 /* ---------- activity log ---------- */
