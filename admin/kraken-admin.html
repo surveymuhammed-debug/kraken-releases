@@ -366,6 +366,18 @@
     </div>
   </section>
 
+  <!-- BACKUP -->
+  <section class="card" style="margin-top:16px">
+    <h2>Backup</h2>
+    <div class="body tight">
+      <div class="toolbar" style="margin-bottom:0">
+        <span class="hint" style="flex:1">Save or restore your whole working set — policy, seats, messages, log — as one file. This is <b>not</b> the signing key; back that up separately in <b>Signing key</b>.</span>
+        <button class="btn sm" id="exportAll">⬇ Export all</button>
+        <button class="btn sm" id="importAll">Import all</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ACTIVITY LOG -->
   <section class="card" style="margin-top:16px">
     <h2>Activity log <span class="n" id="logCount">0</span></h2>
@@ -412,6 +424,19 @@
     <div class="row" style="margin-top:16px;justify-content:flex-end">
       <button class="btn ghost" id="seatCancel" type="button">Cancel</button>
       <button class="btn primary" id="seatSave" type="button">Save seat</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- full backup dialog -->
+<dialog id="backupDlg">
+  <div class="body">
+    <h3>Import full backup</h3>
+    <p class="hint" style="margin-top:0">Paste a <code>kraken-admin-backup.json</code>. This replaces your current policy, seats, messages, and log.</p>
+    <textarea id="backupText" rows="7" placeholder='{"_kind":"kraken-admin-backup", …}'></textarea>
+    <div class="row" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn ghost" id="backupCancel" type="button">Cancel</button>
+      <button class="btn primary" id="backupLoad" type="button">Replace &amp; load</button>
     </div>
   </div>
 </dialog>
@@ -597,17 +622,20 @@ function pretty(s){ try{ return JSON.stringify(JSON.parse(s), null, 2); }catch(e
 function updateBuildNote(){
   const n = $("#buildNote");
   const matched = state.pubB64 && state.pubB64 === SHIPPED_PUBKEY;
-  if(!state.priv){ n.className="note warn"; n.innerHTML="No signing key yet. Generate one, or import the key you first used — it must match the key inside Kraken, or signatures are rejected."; return; }
+  const expired = state.expires && state.expires < todayISO();
+  const expiredMsg = expired ? "⚠ The expiry date ("+esc(state.expires)+") is in the past — Kraken will treat this file as expired and invalid. Clear or move the expiry date. " : "";
+  if(!state.priv){ n.className=expired?"note danger":"note warn"; n.innerHTML=expiredMsg+"No signing key yet. Generate one, or import the key you first used — it must match the key inside Kraken, or signatures are rejected."; return; }
   if(state.mode==="enforce" && !matched){
     n.className="note danger";
-    n.innerHTML="⚠ Enforce mode, but this key does <b>not</b> match the key shipped in Kraken. The add-in will reject this file and could lock users out. Use the original key, or rebuild Kraken with this key, before enforcing.";
+    n.innerHTML=expiredMsg+"⚠ Enforce mode, but this key does <b>not</b> match the key shipped in Kraken. The add-in will reject this file and could lock users out. Use the original key, or rebuild Kraken with this key, before enforcing.";
     return;
   }
   if(!matched){
-    n.className="note warn";
-    n.innerHTML="This key doesn't match the one shipped in Kraken (fine while you're setting up). Signatures validate only once Kraken carries this public key.";
+    n.className=expired?"note danger":"note warn";
+    n.innerHTML=expiredMsg+"This key doesn't match the one shipped in Kraken (fine while you're setting up). Signatures validate only once Kraken carries this public key.";
     return;
   }
+  if(expired){ n.className="note danger"; n.innerHTML=expiredMsg+"The key matches shipped Kraken, but the file is expired."; return; }
   n.className="note ok";
   n.innerHTML="✓ This key matches the one inside shipped Kraken — your signed file will be accepted.";
 }
@@ -978,6 +1006,11 @@ function bindInputs(){
   $("#msgDownload").onclick = ()=>{ if(lastMsgFile){ downloadFile("messages.json", JSON.stringify(lastMsgFile,null,2)); logEvent("file","Downloaded messages.json"); } };
   $("#msgCopy").onclick = ()=>{ if(lastMsgFile) copy(JSON.stringify(lastMsgFile,null,2)); };
 
+  $("#exportAll").onclick = exportAll;
+  $("#importAll").onclick = ()=>{ $("#backupText").value=""; $("#backupDlg").showModal(); };
+  $("#backupCancel").onclick = ()=>$("#backupDlg").close();
+  $("#backupLoad").onclick = ()=>{ try{ importAll(JSON.parse($("#backupText").value)); $("#backupDlg").close(); }
+    catch(e){ alert("Couldn't import: "+e.message); } };
   $("#copyUrlAccess").onclick = ()=>copy(FEED_BASE+"access.json");
   $("#copyUrlMsg").onclick = ()=>copy(FEED_BASE+"messages.json");
   $("#logExport").onclick = exportLog;
@@ -1050,6 +1083,29 @@ function renderLog(){
 function exportLog(){
   const lines = state.log.map(e=>`${e.t}\t${e.kind}\t${e.text}`).join("\n");
   downloadFile("kraken-admin-log.txt", lines || "(empty)");
+}
+function exportAll(){
+  const d = { _kind:"kraken-admin-backup", _v:1, savedAt:new Date().toISOString(),
+    policy:{ mode:state.mode, def:state.def, trialDays:int(state.trialDays), graceDays:int(state.graceDays), issued:state.issued, expires:state.expires },
+    seats:state.seats, messages:state.messages, log:state.log };
+  downloadFile("kraken-admin-backup.json", JSON.stringify(d,null,2));
+  logEvent("file","Exported full backup ("+state.seats.length+" seats, "+state.messages.length+" messages)");
+}
+function importAll(obj){
+  if(!obj || obj._kind!=="kraken-admin-backup") throw new Error("not a Kraken admin backup file");
+  const p = obj.policy||{};
+  state.mode=p.mode||"warn"; state.def=p.def||"trial";
+  state.trialDays=p.trialDays??30; state.graceDays=p.graceDays??14;
+  state.issued=p.issued||todayISO(); state.expires=p.expires||"";
+  state.seats=Array.isArray(obj.seats)?obj.seats:[];
+  state.messages=Array.isArray(obj.messages)?obj.messages:[];
+  if(Array.isArray(obj.log)) state.log=obj.log;
+  $("#defPlan").value=state.def; $("#trialDays").value=state.trialDays; $("#graceDays").value=state.graceDays;
+  $("#issued").value=state.issued; $("#expEnable").checked=!!state.expires;
+  $("#expDate").classList.toggle("hide",!state.expires); if(state.expires)$("#expDate").value=state.expires;
+  setMode(state.mode,true); save();
+  renderSeats(); renderMessages(); renderMsgOutput(); renderLog(); renderOutput();
+  logEvent("file","Imported full backup ("+state.seats.length+" seats, "+state.messages.length+" messages)");
 }
 function bulkAdd(){
   const emails = parseEmails($("#bulkText").value); const plan = $("#bulkPlan").value;
