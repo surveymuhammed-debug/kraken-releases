@@ -170,6 +170,7 @@
               <option value="paid">Paid</option>
               <option value="blocked">Blocked</option>
             </select>
+            <button class="btn sm" id="bulkSeatBtn">Bulk add</button>
             <button class="btn sm primary" id="addSeatBtn">＋ Add seat</button>
           </div>
           <div style="overflow:auto">
@@ -370,7 +371,17 @@
     <h2>Activity log <span class="n" id="logCount">0</span></h2>
     <div class="body tight">
       <div class="toolbar" style="margin-bottom:8px">
-        <span class="hint" style="flex:1">Every change you make here, with a timestamp. Stored in this browser.</span>
+        <input class="search" id="logSearch" placeholder="Search log…" style="flex:1;min-width:140px" autocomplete="off">
+        <select id="logFilter" style="width:auto">
+          <option value="">All kinds</option>
+          <option value="seat">Seats</option>
+          <option value="policy">Policy</option>
+          <option value="key">Key</option>
+          <option value="sign">Signing</option>
+          <option value="message">Messages</option>
+          <option value="file">Files</option>
+          <option value="warn">Warnings</option>
+        </select>
         <button class="btn sm" id="logExport">⬇ Export</button>
         <button class="btn sm danger ghost" id="logClear">Clear</button>
       </div>
@@ -401,6 +412,24 @@
     <div class="row" style="margin-top:16px;justify-content:flex-end">
       <button class="btn ghost" id="seatCancel" type="button">Cancel</button>
       <button class="btn primary" id="seatSave" type="button">Save seat</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- bulk seats dialog -->
+<dialog id="bulkDlg">
+  <div class="body">
+    <h3>Bulk add seats</h3>
+    <p class="hint" style="margin-top:0">Paste emails (commas, spaces, or new lines — anything). They all get the plan you pick. Existing seats are updated.</p>
+    <textarea id="bulkText" rows="6" placeholder="alice@example.com, bob@example.com&#10;carol@example.com"></textarea>
+    <div style="margin-top:12px"><label for="bulkPlan">Plan for all</label>
+      <select id="bulkPlan">
+        <option value="paid">Paid</option><option value="free">Free</option>
+        <option value="trial">Trial</option><option value="blocked">Blocked</option>
+      </select></div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button class="btn ghost" id="bulkCancel" type="button">Cancel</button>
+      <button class="btn primary" id="bulkSave" type="button">Add all</button>
     </div>
   </div>
 </dialog>
@@ -892,6 +921,9 @@ function bindInputs(){
 
   $("#search").oninput = renderSeats; $("#filterPlan").onchange = renderSeats;
   $("#addSeatBtn").onclick = ()=>openSeat(-1);
+  $("#bulkSeatBtn").onclick = ()=>{ $("#bulkText").value=""; $("#bulkDlg").showModal(); $("#bulkText").focus(); };
+  $("#bulkCancel").onclick = ()=>$("#bulkDlg").close();
+  $("#bulkSave").onclick = bulkAdd;
   $("#seatSave").onclick = saveSeat; $("#seatCancel").onclick = ()=>$("#seatDlg").close();
   $("#sEmail").addEventListener("keydown",e=>{ if(e.key==="Enter") saveSeat(); });
 
@@ -949,6 +981,7 @@ function bindInputs(){
   $("#copyUrlAccess").onclick = ()=>copy(FEED_BASE+"access.json");
   $("#copyUrlMsg").onclick = ()=>copy(FEED_BASE+"messages.json");
   $("#logExport").onclick = exportLog;
+  $("#logFilter").onchange = renderLog; $("#logSearch").oninput = renderLog;
   $("#logClear").onclick = ()=>{ if(!state.log.length) return; if(!confirm("Clear the activity log?")) return; state.log=[]; save(); renderLog(); };
 
   $("#themeBtn").onclick = toggleTheme;
@@ -999,9 +1032,13 @@ function renderLog(){
   const box=$("#logRows"); if(!box) return;
   $("#logCount").textContent = state.log.length;
   if(!state.log.length){ box.innerHTML='<div class="empty">No activity yet.</div>'; return; }
+  const fk = $("#logFilter") ? $("#logFilter").value : "";
+  const q  = ($("#logSearch") ? $("#logSearch").value : "").trim().toLowerCase();
+  const list = state.log.filter(e=>(!fk||e.kind===fk)&&(!q||e.text.toLowerCase().includes(q)));
+  if(!list.length){ box.innerHTML='<div class="empty">No matching entries.</div>'; return; }
   box.innerHTML="";
-  for(let i=state.log.length-1;i>=0;i--){
-    const e=state.log[i];
+  for(let i=list.length-1;i>=0;i--){
+    const e=list[i];
     const row=document.createElement("div");
     row.style.cssText="display:flex;gap:10px;align-items:baseline;padding:6px 2px;border-bottom:1px solid var(--line-soft);font-size:13px";
     row.innerHTML = `<span class="dot" style="flex:none;margin-top:6px;background:${LOG_COLOR[e.kind]||'var(--ink-soft)'}"></span>`+
@@ -1013,6 +1050,17 @@ function renderLog(){
 function exportLog(){
   const lines = state.log.map(e=>`${e.t}\t${e.kind}\t${e.text}`).join("\n");
   downloadFile("kraken-admin-log.txt", lines || "(empty)");
+}
+function bulkAdd(){
+  const emails = parseEmails($("#bulkText").value); const plan = $("#bulkPlan").value;
+  if(!emails.length){ alert("No valid emails found in that text."); return; }
+  let added=0, updated=0;
+  for(const e of emails){
+    const i = state.seats.findIndex(s=>s.email===e);
+    if(i>=0){ state.seats[i].plan=plan; updated++; } else { state.seats.push({email:e, plan, note:"bulk"}); added++; }
+  }
+  logEvent("seat", `Bulk ${plan}: ${added} added, ${updated} updated`);
+  $("#bulkDlg").close(); $("#bulkText").value=""; save(); renderSeats(); renderOutput();
 }
 
 /* ---------- misc ---------- */
