@@ -349,6 +349,19 @@
     </div>
   </section>
 
+  <!-- ACTIVITY LOG -->
+  <section class="card" style="margin-top:16px">
+    <h2>Activity log <span class="n" id="logCount">0</span></h2>
+    <div class="body tight">
+      <div class="toolbar" style="margin-bottom:8px">
+        <span class="hint" style="flex:1">Every change you make here, with a timestamp. Stored in this browser.</span>
+        <button class="btn sm" id="logExport">⬇ Export</button>
+        <button class="btn sm danger ghost" id="logClear">Clear</button>
+      </div>
+      <div id="logRows" style="max-height:260px;overflow:auto"></div>
+    </div>
+  </section>
+
   <div class="foot">
     Runs entirely in your browser. Your private key never leaves this machine.
     <br>Kraken access feed · signed with ECDSA&nbsp;P-256 / SHA-256 (ES256).
@@ -437,6 +450,7 @@ const state = {
   issued: todayISO(), expires: "",
   seats: [],            // {email, plan, note}
   messages: [],         // {id, title, body, level, all, to:[], until, dismissible}
+  log: [],              // {t, kind, text}
   priv: null, pub: null, pubB64: "", remember: false
 };
 
@@ -510,16 +524,21 @@ async function signAndBuild(){
   const payloadText = buildPayloadText();
   const sig = await signText(state.priv, payloadText);
   lastFile = { payloadText, sig, alg:"ES256", key: state.pubB64 };
-  renderOutput(true);
+  renderOutput();
   // prove it verifies against its own key
   const ok = await verifyText(state.pub, payloadText, sig);
   $("#signState").textContent = ok ? "signed ✓" : "signed (verify failed!)";
+  logEvent("sign", `Signed access.json — mode ${state.mode}, ${state.seats.length} seat(s)${ok?"":" (SELF-VERIFY FAILED)"}`);
 }
 
-function renderOutput(signed){
+function renderOutput(){
+  // a signature only applies to the exact bytes it signed — if the policy or
+  // seats changed since, drop it so a stale file can't be shipped.
+  if(lastFile && lastFile.payloadText !== buildPayloadText()){ lastFile = null; }
   if(lastFile){
     $("#jsonOut").textContent = JSON.stringify(lastFile, null, 2);
     $("#downloadBtn").disabled = false; $("#copyJson").disabled = false; $("#verifyBtn").disabled = false;
+    $("#signState").textContent = "signed ✓";
   } else {
     $("#jsonOut").textContent = "Preview (unsigned):\n\n" + pretty(buildPayloadText());
     $("#downloadBtn").disabled = true; $("#copyJson").disabled = true; $("#verifyBtn").disabled = true;
@@ -578,7 +597,7 @@ function renderSeats(){
   $("#stats").innerHTML = ["paid","trial","free","blocked"].map(p=>
     `<span class="chip"><span class="dot d-${p}"></span>${planLabel(p)} <b>${counts[p]||0}</b></span>`).join("");
   tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openSeat(+b.dataset.edit));
-  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ state.seats.splice(+b.dataset.del,1); save(); renderSeats(); renderOutput(); });
+  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ const s=state.seats[+b.dataset.del]; state.seats.splice(+b.dataset.del,1); if(s) logEvent("seat",`Removed seat ${s.email}`); save(); renderSeats(); renderOutput(); });
 }
 function planLabel(p){ return {free:"Free",trial:"Trial",paid:"Paid",blocked:"Blocked"}[p]||p; }
 function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -596,9 +615,9 @@ function saveSeat(){
   if(!email || !email.includes("@")){ alert("Enter a valid email."); return; }
   const seat = {email, plan:$("#sPlan").value, note:$("#sNote").value.trim()};
   const dup = state.seats.findIndex(x=>x.email===email);
-  if(editIdx>=0){ state.seats[editIdx]=seat; }
-  else if(dup>=0){ state.seats[dup]=seat; }
-  else { state.seats.push(seat); }
+  if(editIdx>=0){ state.seats[editIdx]=seat; logEvent("seat",`Edited seat ${email} → ${seat.plan}`); }
+  else if(dup>=0){ state.seats[dup]=seat; logEvent("seat",`Updated seat ${email} → ${seat.plan}`); }
+  else { state.seats.push(seat); logEvent("seat",`Added seat ${email} → ${seat.plan}`); }
   $("#seatDlg").close(); save(); renderSeats(); renderOutput();
 }
 
@@ -658,7 +677,9 @@ function addOrUpdateMsg(){
               all, to: all? [] : composeTo.slice(),
               until: $("#msgUntil").value || "", dismissible: $("#msgDismiss").checked };
   const i = state.messages.findIndex(x=>x.id===m.id);
-  if(i>=0) state.messages[i]=m; else state.messages.push(m);
+  const who = m.all?"everyone":`${m.to.length} user(s)`;
+  if(i>=0){ state.messages[i]=m; logEvent("message",`Edited message “${m.title||m.body.slice(0,24)}” → ${who}`); }
+  else { state.messages.push(m); logEvent("message",`Queued message “${m.title||m.body.slice(0,24)}” → ${who}`); }
   clearCompose(); save(); renderMessages(); renderMsgOutput();
 }
 function editMsg(id){
@@ -694,7 +715,7 @@ function renderMessages(){
     box.appendChild(card);
   }
   box.querySelectorAll("[data-emsg]").forEach(b=>b.onclick=()=>editMsg(b.dataset.emsg));
-  box.querySelectorAll("[data-dmsg]").forEach(b=>b.onclick=()=>{ state.messages=state.messages.filter(x=>x.id!==b.dataset.dmsg); save(); renderMessages(); renderMsgOutput(); });
+  box.querySelectorAll("[data-dmsg]").forEach(b=>b.onclick=()=>{ const mm=state.messages.find(x=>x.id===b.dataset.dmsg); state.messages=state.messages.filter(x=>x.id!==b.dataset.dmsg); if(mm) logEvent("message",`Removed message “${mm.title||mm.body.slice(0,24)}”`); save(); renderMessages(); renderMsgOutput(); });
 }
 function buildMessagesText(){
   const msgs = state.messages.map(m=>{
@@ -714,11 +735,13 @@ async function signAndBuildMessages(){
   const payloadText = buildMessagesText();
   const sig = await signText(state.priv, payloadText);
   lastMsgFile = { payloadText, sig, alg:"ES256", key: state.pubB64 };
-  renderMsgOutput(true);
+  renderMsgOutput();
   const ok = await verifyText(state.pub, payloadText, sig);
   $("#msgState").textContent = ok ? "signed ✓" : "signed (verify failed!)";
+  logEvent("sign", `Signed messages.json — ${state.messages.length} message(s)${ok?"":" (SELF-VERIFY FAILED)"}`);
 }
 function renderMsgOutput(){
+  if(lastMsgFile && lastMsgFile.payloadText !== buildMessagesText()){ lastMsgFile = null; }
   const n=$("#msgBuildNote");
   n.className="note warn";
   n.innerHTML="Heads-up: the currently shipped Kraken doesn't read <code>messages.json</code> yet. This builds the signed file so it's ready; delivery turns on in the next add-in build. See admin/README.md.";
@@ -766,7 +789,8 @@ function parseEmails(text){
 function save(){
   try{
     const d = { mode:state.mode, def:state.def, trialDays:state.trialDays, graceDays:state.graceDays,
-                issued:state.issued, expires:state.expires, seats:state.seats, messages:state.messages, remember:state.remember };
+                issued:state.issued, expires:state.expires, seats:state.seats, messages:state.messages,
+                log:state.log.slice(-500), remember:state.remember };
     if(state.remember && state.privJwk) d.privJwk = state.privJwk;
     localStorage.setItem(LSK, JSON.stringify(d));
   }catch(e){}
@@ -776,7 +800,8 @@ async function load(){
   if(!d) return;
   Object.assign(state, {mode:d.mode||"warn", def:d.def||"trial", trialDays:d.trialDays??30,
     graceDays:d.graceDays??14, issued:d.issued||todayISO(), expires:d.expires||"",
-    seats:Array.isArray(d.seats)?d.seats:[], messages:Array.isArray(d.messages)?d.messages:[], remember:!!d.remember});
+    seats:Array.isArray(d.seats)?d.seats:[], messages:Array.isArray(d.messages)?d.messages:[],
+    log:Array.isArray(d.log)?d.log:[], remember:!!d.remember});
   if(d.remember && d.privJwk && subtle){
     try{ const {priv,pub}=await importPrivJwk(d.privJwk); state.priv=priv; state.pub=pub;
       state.privJwk=d.privJwk; state.pubB64=await pubToB64(pub); }catch(e){}
@@ -813,20 +838,24 @@ const MODE_HINT = {
   warn:"Nobody is blocked. Kraken records who WOULD be blocked — the safe way to confirm your list before charging.",
   enforce:"Live. Blocked and expired seats cannot run the tools. Switch here only once Warn looks right."
 };
-function setMode(m){
+function setMode(m, quiet){
+  const changed = state.mode!==m;
   state.mode=m;
   document.querySelectorAll("#modeSeg button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.v===m)));
   $("#modeHint").textContent = MODE_HINT[m];
   const pill=$("#modePill"); pill.dataset.m=m; pill.textContent="● "+m;
+  if(changed && !quiet) logEvent(m==="enforce"?"warn":"policy", `Mode → ${m.toUpperCase()}`);
   save(); renderOutput();
 }
 
 /* ---------- wire up ---------- */
 function bindInputs(){
-  $("#defPlan").onchange = e=>{ state.def=e.target.value; save(); renderOutput(); };
-  $("#trialDays").oninput = e=>{ state.trialDays=e.target.value; save(); renderOutput(); };
-  $("#graceDays").oninput = e=>{ state.graceDays=e.target.value; save(); renderOutput(); };
-  $("#issued").onchange = e=>{ state.issued=e.target.value; save(); renderOutput(); };
+  $("#defPlan").onchange = e=>{ state.def=e.target.value; logEvent("policy",`Default plan → ${state.def}`); save(); renderOutput(); };
+  $("#trialDays").onchange = e=>{ state.trialDays=e.target.value; logEvent("policy",`Trial length → ${int(state.trialDays)} days`); save(); };
+  $("#trialDays").oninput = ()=>renderOutput();
+  $("#graceDays").onchange = e=>{ state.graceDays=e.target.value; logEvent("policy",`Offline grace → ${int(state.graceDays)} days`); save(); };
+  $("#graceDays").oninput = ()=>renderOutput();
+  $("#issued").onchange = e=>{ state.issued=e.target.value; logEvent("policy",`Issued date → ${state.issued}`); save(); renderOutput(); };
   $("#expEnable").onchange = e=>{ $("#expDate").classList.toggle("hide", !e.target.checked);
     if(!e.target.checked){ state.expires=""; } else if($("#expDate").value){ state.expires=$("#expDate").value; }
     save(); renderOutput(); };
@@ -839,6 +868,7 @@ function bindInputs(){
   $("#sEmail").addEventListener("keydown",e=>{ if(e.key==="Enter") saveSeat(); });
 
   $("#genKey").onclick = async()=>{ if(!needCrypto())return; const kp=await genKeypair(); await setKey(kp.privateKey,kp.publicKey);
+    logEvent("key", `Generated new signing key${state.pubB64===SHIPPED_PUBKEY?" (matches shipped)":" (does NOT match shipped)"}`);
     alert("New key made. Back it up now (Back up) — and remember: Kraken must ship with THIS public key for its signatures to be accepted."); };
   $("#importKey").onclick = ()=>{ $("#keyText").value=""; $("#keyDlg").showModal(); };
   $("#keyCancel").onclick = ()=>$("#keyDlg").close();
@@ -850,14 +880,16 @@ function bindInputs(){
       if(t.includes("BEGIN")) res=await importPrivPkcs8(t);
       else res=await importPrivJwk(JSON.parse(t));
       await setKey(res.priv,res.pub); $("#keyDlg").close();
+      logEvent("key", `Imported signing key${state.pubB64===SHIPPED_PUBKEY?" (matches shipped)":" (does NOT match shipped)"}`);
     }catch(e){ alert("Couldn't read that key: "+e.message); }
   };
   $("#backupKey").onclick = async()=>{
     if(!state.privJwk){ alert("No key."); return; }
     downloadFile("kraken-signing-key.json", JSON.stringify(state.privJwk,null,2));
+    logEvent("key","Backed up signing key");
   };
   $("#clearKey").onclick = ()=>{ if(!confirm("Forget the key from this browser? Make sure you have a backup."))return;
-    state.priv=state.pub=null; state.pubB64=""; state.privJwk=null; save(); refreshKeyUI(); renderOutput(); };
+    state.priv=state.pub=null; state.pubB64=""; state.privJwk=null; logEvent("warn","Forgot signing key from this browser"); save(); refreshKeyUI(); renderOutput(); };
   $("#copyPub").onclick = ()=>copy(state.pubB64);
   $("#rememberKey").onchange = e=>{ state.remember=e.target.checked; save(); };
 
@@ -865,7 +897,7 @@ function bindInputs(){
   $("#verifyBtn").onclick = async()=>{ if(!lastFile)return;
     const ok = await verifyText(state.pub, lastFile.payloadText, lastFile.sig);
     alert(ok? "Signature verifies against the loaded key ✓":"Signature does NOT verify ✗"); };
-  $("#downloadBtn").onclick = ()=>{ if(lastFile) downloadFile("access.json", JSON.stringify(lastFile,null,2)); };
+  $("#downloadBtn").onclick = ()=>{ if(lastFile){ downloadFile("access.json", JSON.stringify(lastFile,null,2)); logEvent("file","Downloaded access.json"); } };
   $("#copyJson").onclick = ()=>{ if(lastFile) copy(JSON.stringify(lastFile,null,2)); };
 
   $("#importJson").onclick = ()=>{ $("#jsonText").value=""; $("#jsonDlg").showModal(); };
@@ -883,8 +915,11 @@ function bindInputs(){
   $("#msgAdd").onclick = addOrUpdateMsg;
   $("#msgClear").onclick = clearCompose;
   $("#msgSignBtn").onclick = signAndBuildMessages;
-  $("#msgDownload").onclick = ()=>{ if(lastMsgFile) downloadFile("messages.json", JSON.stringify(lastMsgFile,null,2)); };
+  $("#msgDownload").onclick = ()=>{ if(lastMsgFile){ downloadFile("messages.json", JSON.stringify(lastMsgFile,null,2)); logEvent("file","Downloaded messages.json"); } };
   $("#msgCopy").onclick = ()=>{ if(lastMsgFile) copy(JSON.stringify(lastMsgFile,null,2)); };
+
+  $("#logExport").onclick = exportLog;
+  $("#logClear").onclick = ()=>{ if(!state.log.length) return; if(!confirm("Clear the activity log?")) return; state.log=[]; save(); renderLog(); };
 
   $("#themeBtn").onclick = toggleTheme;
 }
@@ -903,6 +938,7 @@ function loadFromAccessJson(file){
   $("#issued").value=state.issued; $("#expEnable").checked=!!state.expires;
   $("#expDate").classList.toggle("hide",!state.expires); if(state.expires)$("#expDate").value=state.expires;
   setMode(state.mode); save(); renderSeats(); renderOutput();
+  logEvent("file",`Imported access.json — mode ${state.mode}, ${state.seats.length} seat(s)`);
   if(file.key && file.key!==SHIPPED_PUBKEY && file.key!==state.pubB64)
     alert("Loaded. Note: this file was signed with a different public key than the one shipped in Kraken.");
 }
@@ -915,6 +951,38 @@ async function fetchReg(){
     if(!regEmails.length) alert("Fetched, but found no emails in the response.");
     renderReg();
   }catch(e){ alert("Couldn't fetch (often CORS). Open the sheet, copy the emails, and paste them instead.\n\n"+e.message); }
+}
+
+/* ---------- activity log ---------- */
+function logEvent(kind, text){
+  state.log.push({ t:new Date().toISOString(), kind, text });
+  if(state.log.length>500) state.log = state.log.slice(-500);
+  save(); renderLog();
+}
+function fmtTime(iso){
+  try{ const d=new Date(iso); return d.toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}); }
+  catch(e){ return iso; }
+}
+const LOG_COLOR = { seat:"var(--free)", policy:"var(--trial)", key:"var(--accent)",
+                    sign:"var(--paid)", message:"var(--free)", file:"var(--ink-soft)", warn:"var(--blocked)" };
+function renderLog(){
+  const box=$("#logRows"); if(!box) return;
+  $("#logCount").textContent = state.log.length;
+  if(!state.log.length){ box.innerHTML='<div class="empty">No activity yet.</div>'; return; }
+  box.innerHTML="";
+  for(let i=state.log.length-1;i>=0;i--){
+    const e=state.log[i];
+    const row=document.createElement("div");
+    row.style.cssText="display:flex;gap:10px;align-items:baseline;padding:6px 2px;border-bottom:1px solid var(--line-soft);font-size:13px";
+    row.innerHTML = `<span class="dot" style="flex:none;margin-top:6px;background:${LOG_COLOR[e.kind]||'var(--ink-soft)'}"></span>`+
+      `<span style="font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);flex:none;min-width:116px">${esc(fmtTime(e.t))}</span>`+
+      `<span style="flex:1">${esc(e.text)}</span>`;
+    box.appendChild(row);
+  }
+}
+function exportLog(){
+  const lines = state.log.map(e=>`${e.t}\t${e.kind}\t${e.text}`).join("\n");
+  downloadFile("kraken-admin-log.txt", lines || "(empty)");
 }
 
 /* ---------- misc ---------- */
@@ -954,7 +1022,7 @@ function toggleTheme(){
   $("#defPlan").value=state.def; $("#trialDays").value=state.trialDays; $("#graceDays").value=state.graceDays;
   $("#issued").value=state.issued||todayISO(); $("#rememberKey").checked=state.remember;
   if(state.expires){ $("#expEnable").checked=true; $("#expDate").classList.remove("hide"); $("#expDate").value=state.expires; }
-  bindInputs(); setMode(state.mode); renderSeats(); renderMessages(); renderMsgOutput(); await refreshKeyUI(); renderOutput();
+  bindInputs(); setMode(state.mode, true); renderSeats(); renderMessages(); renderMsgOutput(); renderLog(); await refreshKeyUI(); renderOutput();
   if(!subtle){ $("#buildNote").className="note danger";
     $("#buildNote").innerHTML="This page isn't in a secure context, so it can't sign. Open it from https:// or a local file, then reload."; }
 })();
