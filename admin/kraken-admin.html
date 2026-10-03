@@ -64,6 +64,9 @@
     padding:14px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:8px}
   .card>h2 .n{margin-left:auto;font-weight:600;color:var(--ink);background:var(--panel-2);
     border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:12px;text-transform:none;letter-spacing:0}
+  .card>h2 .n.unsigned{color:var(--trial);background:var(--trial-bg);border-color:transparent}
+  .card>h2 .n.signed{color:var(--paid);background:var(--paid-bg);border-color:transparent}
+  .state-signed{color:var(--paid);font-weight:700} .state-unsigned{color:var(--trial);font-weight:700}
   .body{padding:16px}
   .body.tight{padding:12px 16px}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
@@ -268,6 +271,19 @@
           <p class="hint" id="keyNote"></p>
         </div>
       </section>
+
+      <!-- PUBLISH -->
+      <section class="card">
+        <h2>Publish</h2>
+        <div class="body">
+          <p class="hint" style="margin-top:0">Commit the signed files to the repo root. Each tester's Kraken reads them from here:</p>
+          <label>access.json</label>
+          <div class="row"><div class="field"><div class="kv" id="urlAccess">—</div></div><button class="btn sm" id="copyUrlAccess">Copy</button></div>
+          <label style="margin-top:10px">messages.json</label>
+          <div class="row"><div class="field"><div class="kv" id="urlMsg">—</div></div><button class="btn sm" id="copyUrlMsg">Copy</button></div>
+          <p class="hint" style="margin-top:10px">Changes take effect on each tester's next update/licence check — no reinstall.</p>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -442,6 +458,7 @@
    ──────────────────────────────────────────────────────────────────────── */
 
 const SHIPPED_PUBKEY = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEERq97fwsmUd39x59XsTz//WNBoEmOfiZWPo8gNMs6gGTl/bIa1af7GMkrxcLRMjVpV09f6vG/QUQX8feUJQccQ==";
+const FEED_BASE = "https://raw.githubusercontent.com/surveymuhammed-debug/kraken-releases/main/";
 const LSK = "kraken.admin.v1";
 const $ = s => document.querySelector(s);
 
@@ -538,11 +555,11 @@ function renderOutput(){
   if(lastFile){
     $("#jsonOut").textContent = JSON.stringify(lastFile, null, 2);
     $("#downloadBtn").disabled = false; $("#copyJson").disabled = false; $("#verifyBtn").disabled = false;
-    $("#signState").textContent = "signed ✓";
+    $("#signState").textContent = "signed ✓"; $("#signState").className = "n signed";
   } else {
     $("#jsonOut").textContent = "Preview (unsigned):\n\n" + pretty(buildPayloadText());
     $("#downloadBtn").disabled = true; $("#copyJson").disabled = true; $("#verifyBtn").disabled = true;
-    $("#signState").textContent = "unsigned";
+    $("#signState").textContent = "unsigned"; $("#signState").className = "n unsigned";
   }
   updateBuildNote();
 }
@@ -747,10 +764,10 @@ function renderMsgOutput(){
   n.innerHTML="Heads-up: the currently shipped Kraken doesn't read <code>messages.json</code> yet. This builds the signed file so it's ready; delivery turns on in the next add-in build. See admin/README.md.";
   if(lastMsgFile){
     $("#msgJsonOut").textContent = JSON.stringify(lastMsgFile,null,2);
-    $("#msgDownload").disabled=false; $("#msgCopy").disabled=false;
+    $("#msgDownload").disabled=false; $("#msgCopy").disabled=false; $("#msgState").className="state-signed";
   } else {
     $("#msgJsonOut").textContent = state.messages.length ? "Preview (unsigned):\n\n"+pretty(buildMessagesText()) : "Add a message and sign to produce the file.";
-    $("#msgDownload").disabled=true; $("#msgCopy").disabled=true; $("#msgState").textContent="unsigned";
+    $("#msgDownload").disabled=true; $("#msgCopy").disabled=true; $("#msgState").textContent="unsigned"; $("#msgState").className="state-unsigned";
   }
 }
 
@@ -839,6 +856,17 @@ const MODE_HINT = {
   enforce:"Live. Blocked and expired seats cannot run the tools. Switch here only once Warn looks right."
 };
 function setMode(m, quiet){
+  const prev = state.mode;
+  if(m==="enforce" && prev!=="enforce" && !quiet){
+    const matched = state.pubB64===SHIPPED_PUBKEY;
+    const msg = matched
+      ? "Switch to ENFORCE?\n\nBlocked and expired seats will no longer be able to run Kraken. Make sure Warn mode looked right first."
+      : "Switch to ENFORCE with a signing key that does NOT match the one shipped in Kraken?\n\nKraken will reject the file and could lock EVERYONE out. Recommended: stay in Warn until the key matches.";
+    if(!confirm(msg)){
+      document.querySelectorAll("#modeSeg button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.v===prev)));
+      return;
+    }
+  }
   const changed = state.mode!==m;
   state.mode=m;
   document.querySelectorAll("#modeSeg button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.v===m)));
@@ -918,6 +946,8 @@ function bindInputs(){
   $("#msgDownload").onclick = ()=>{ if(lastMsgFile){ downloadFile("messages.json", JSON.stringify(lastMsgFile,null,2)); logEvent("file","Downloaded messages.json"); } };
   $("#msgCopy").onclick = ()=>{ if(lastMsgFile) copy(JSON.stringify(lastMsgFile,null,2)); };
 
+  $("#copyUrlAccess").onclick = ()=>copy(FEED_BASE+"access.json");
+  $("#copyUrlMsg").onclick = ()=>copy(FEED_BASE+"messages.json");
   $("#logExport").onclick = exportLog;
   $("#logClear").onclick = ()=>{ if(!state.log.length) return; if(!confirm("Clear the activity log?")) return; state.log=[]; save(); renderLog(); };
 
@@ -1022,6 +1052,7 @@ function toggleTheme(){
   $("#defPlan").value=state.def; $("#trialDays").value=state.trialDays; $("#graceDays").value=state.graceDays;
   $("#issued").value=state.issued||todayISO(); $("#rememberKey").checked=state.remember;
   if(state.expires){ $("#expEnable").checked=true; $("#expDate").classList.remove("hide"); $("#expDate").value=state.expires; }
+  $("#urlAccess").textContent = FEED_BASE+"access.json"; $("#urlMsg").textContent = FEED_BASE+"messages.json";
   bindInputs(); setMode(state.mode, true); renderSeats(); renderMessages(); renderMsgOutput(); renderLog(); await refreshKeyUI(); renderOutput();
   if(!subtle){ $("#buildNote").className="note danger";
     $("#buildNote").innerHTML="This page isn't in a secure context, so it can't sign. Open it from https:// or a local file, then reload."; }
