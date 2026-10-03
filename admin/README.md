@@ -1,0 +1,62 @@
+# Kraken Access — admin panel
+
+`kraken-admin.html` is a self-contained control panel for Kraken licensing. It
+runs entirely in your browser; your private signing key never leaves your
+machine. It produces the `access.json` that the add-in reads from the root of
+this repository (the feed).
+
+## Open it
+
+- Double-click `kraken-admin.html` (opens as a local `file://` page), **or**
+- open the published link if you were given one.
+
+Signing uses WebCrypto, which needs a *secure context*: a `file://` page or an
+`https://` page both work. If the page says it "can't sign here", it's running
+in a sandbox without crypto — reopen it from a real file or an https link.
+
+## What it does
+
+- **Seats** — list a person's email and set their plan: **paid**, **free**,
+  **trial**, or **blocked**. Anyone not listed falls to the **default** plan.
+- **Policy** — pick the enforcement **mode**, the default plan, trial length,
+  offline grace, and an optional expiry date for the file itself.
+- **Signing key** — generate a key, or import the one you already used. The
+  panel tells you whether it matches the key baked into shipped Kraken.
+- **Sign & build** — produces the signed `access.json` to download and commit
+  to this repo's root.
+
+## Modes — go slow
+
+| Mode | Effect |
+|------|--------|
+| **Off** | Licensing inactive. Everyone runs. |
+| **Warn** | Nobody is blocked; Kraken only *records* who would be. Use this to confirm your list is right before charging. |
+| **Enforce** | Live. Blocked/expired seats cannot run the tools. |
+
+**Always sit in Warn first**, confirm the right people would be allowed/blocked,
+then switch to Enforce.
+
+## The key must match
+
+Kraken verifies `access.json` against the public key compiled into the DLL.
+Sign with the **same key you first used** (the one whose public half is shown as
+"matches Kraken"). A different key means Kraken rejects the file. Changing the
+key requires rebuilding and re-publishing Kraken with the new public key — so
+**back the key up** and keep it safe.
+
+## File shape
+
+```json
+{
+  "payloadText": "{\"schema\":1,\"issued\":\"YYYY-MM-DD\",\"policy\":{\"mode\":\"warn\",\"default\":\"trial\",\"trialDays\":30,\"graceDays\":14},\"users\":{\"someone@example.com\":\"paid\"}}",
+  "sig": "<base64, ECDSA P-256 / SHA-256, raw r||s>",
+  "alg": "ES256",
+  "key": "<SPKI base64 public key>"
+}
+```
+
+The signature covers `payloadText` byte-for-byte. Per-seat value is a bare plan
+string (mirroring `policy.default`). The shipped `access.json` ships with an
+empty `users` map, so if a future build expects an object per seat instead,
+change `seatValue()` near the top of the script — and verify one seat in Warn
+mode before enforcing, which costs nobody their afternoon if the shape is off.

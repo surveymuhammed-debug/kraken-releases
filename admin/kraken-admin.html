@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kraken Access</title>
+<meta name="description" content="Local control panel for Kraken licensing: manage seats, set policy, and sign the access.json the add-in reads.">
+<style>
+  :root{
+    --bg:#eef2f4; --panel:#ffffff; --panel-2:#f6f9fb; --ink:#0f1f28; --ink-soft:#4a5b66;
+    --line:#d9e2e8; --line-soft:#e8eef2; --accent:#0a7d86; --accent-ink:#ffffff;
+    --accent-weak:#d6eef0; --shadow:0 1px 2px rgba(16,40,52,.06),0 8px 24px rgba(16,40,52,.07);
+    --free:#2563c9; --free-bg:#e3edfb; --trial:#b7791f; --trial-bg:#fbf0d8;
+    --paid:#1f8a4c; --paid-bg:#d9f1e2; --blocked:#c0392b; --blocked-bg:#fbe0dc;
+    --ok:#1f8a4c; --warn:#b7791f; --danger:#c0392b; --radius:14px;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0c1418; --panel:#121e24; --panel-2:#16242b; --ink:#e7f0f4; --ink-soft:#9fb3bd;
+      --line:#223640; --line-soft:#1b2c34; --accent:#2bb3bd; --accent-ink:#04171a;
+      --accent-weak:#123238; --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+      --free:#6ea8ff; --free-bg:#15263f; --trial:#e3b34e; --trial-bg:#352a12;
+      --paid:#5fd38a; --paid-bg:#123020; --blocked:#f08a7e; --blocked-bg:#3a1a16;
+      --ok:#5fd38a; --warn:#e3b34e; --danger:#f08a7e;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0c1418; --panel:#121e24; --panel-2:#16242b; --ink:#e7f0f4; --ink-soft:#9fb3bd;
+    --line:#223640; --line-soft:#1b2c34; --accent:#2bb3bd; --accent-ink:#04171a;
+    --accent-weak:#123238; --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+    --free:#6ea8ff; --free-bg:#15263f; --trial:#e3b34e; --trial-bg:#352a12;
+    --paid:#5fd38a; --paid-bg:#123020; --blocked:#f08a7e; --blocked-bg:#3a1a16;
+    --ok:#5fd38a; --warn:#e3b34e; --danger:#f08a7e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased;padding:0 16px 64px}
+  .wrap{max-width:1040px;margin:0 auto}
+  a{color:var(--accent)}
+  /* header */
+  header{display:flex;align-items:center;gap:14px;padding:22px 2px 18px;flex-wrap:wrap}
+  .logo{width:40px;height:40px;border-radius:11px;background:
+    radial-gradient(120% 120% at 30% 20%,var(--accent),#063f45);display:grid;place-items:center;
+    color:#fff;font-size:22px;box-shadow:var(--shadow);flex:none}
+  .title h1{font-size:19px;margin:0;letter-spacing:.2px}
+  .title p{margin:1px 0 0;font-size:12.5px;color:var(--ink-soft)}
+  .grow{flex:1}
+  .modepill{font-size:12px;font-weight:650;padding:6px 12px;border-radius:999px;border:1px solid var(--line)}
+  .modepill[data-m="off"]{background:var(--panel);color:var(--ink-soft)}
+  .modepill[data-m="warn"]{background:var(--trial-bg);color:var(--trial);border-color:transparent}
+  .modepill[data-m="enforce"]{background:var(--paid-bg);color:var(--paid);border-color:transparent}
+  .iconbtn{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;
+    width:38px;height:38px;cursor:pointer;font-size:16px}
+  /* grid */
+  .cols{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:860px){.cols{grid-template-columns:1.25fr .95fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden}
+  .card>h2{margin:0;font-size:13px;letter-spacing:.3px;text-transform:uppercase;color:var(--ink-soft);
+    padding:14px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:8px}
+  .card>h2 .n{margin-left:auto;font-weight:600;color:var(--ink);background:var(--panel-2);
+    border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:12px;text-transform:none;letter-spacing:0}
+  .body{padding:16px}
+  .body.tight{padding:12px 16px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  label{display:block;font-size:12px;color:var(--ink-soft);margin:0 0 5px;font-weight:600}
+  input,select,textarea{font:inherit;color:var(--ink);background:var(--panel-2);
+    border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+  textarea{resize:vertical;font-family:var(--mono);font-size:12.5px;line-height:1.5}
+  .field{flex:1;min-width:120px}
+  .btn{font:inherit;font-weight:600;cursor:pointer;border-radius:10px;padding:9px 15px;border:1px solid var(--line);
+    background:var(--panel);color:var(--ink);display:inline-flex;align-items:center;gap:7px}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:6px 10px;font-size:13px}
+  .btn.danger{color:var(--danger)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel-2)}
+  .seg button{font:inherit;font-weight:600;border:0;background:transparent;color:var(--ink-soft);
+    padding:8px 14px;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+  .hint{font-size:12px;color:var(--ink-soft);margin:8px 0 0}
+  .note{font-size:12.5px;border-radius:10px;padding:10px 12px;border:1px solid var(--line);background:var(--panel-2)}
+  .note.warn{background:var(--trial-bg);border-color:transparent;color:var(--trial)}
+  .note.danger{background:var(--blocked-bg);border-color:transparent;color:var(--blocked)}
+  .note.ok{background:var(--paid-bg);border-color:transparent;color:var(--paid)}
+  .kv{font-family:var(--mono);font-size:12px;word-break:break-all;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+  .stat{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
+    padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel-2)}
+  .chip b{font-variant-numeric:tabular-nums}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .d-free{background:var(--free)} .d-trial{background:var(--trial)}
+  .d-paid{background:var(--paid)} .d-blocked{background:var(--blocked)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-soft)}
+  tbody tr:hover{background:var(--panel-2)}
+  td.email{font-weight:600;word-break:break-all}
+  td.note-c{color:var(--ink-soft);max-width:180px}
+  .plan{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;display:inline-flex;align-items:center;gap:6px}
+  .plan.free{color:var(--free);background:var(--free-bg)}
+  .plan.trial{color:var(--trial);background:var(--trial-bg)}
+  .plan.paid{color:var(--paid);background:var(--paid-bg)}
+  .plan.blocked{color:var(--blocked);background:var(--blocked-bg)}
+  .rowacts{display:flex;gap:4px;justify-content:flex-end}
+  .linkbtn{background:none;border:0;color:var(--ink-soft);cursor:pointer;font-size:15px;padding:4px 6px;border-radius:8px}
+  .linkbtn:hover{color:var(--ink);background:var(--panel-2)}
+  .empty{padding:26px 10px;text-align:center;color:var(--ink-soft);font-size:13px}
+  pre.out{margin:0;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px;max-height:280px;overflow:auto}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+  .toolbar .search{flex:1;min-width:160px}
+  .split{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:560px){.split.two{grid-template-columns:1fr 1fr}}
+  .foot{font-size:12px;color:var(--ink-soft);text-align:center;padding:26px 0 0}
+  .keystate{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:0 0 10px}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px}
+  .badge.ok{background:var(--paid-bg);color:var(--paid)} .badge.no{background:var(--blocked-bg);color:var(--blocked)}
+  .badge.idle{background:var(--panel-2);color:var(--ink-soft);border:1px solid var(--line)}
+  dialog{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);color:var(--ink);
+    box-shadow:var(--shadow);max-width:440px;width:92%;padding:0}
+  dialog::backdrop{background:rgba(6,16,20,.45)}
+  dialog .body{padding:16px}
+  dialog h3{margin:0 0 2px;font-size:16px}
+  .hide{display:none!important}
+  .flip{display:flex;gap:8px;align-items:center}
+  .flip input{width:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo" aria-hidden="true">🦑</div>
+    <div class="title">
+      <h1>Kraken Access</h1>
+      <p>Control who may run the add-in — free, trial, paid, or blocked.</p>
+    </div>
+    <div class="grow"></div>
+    <span class="modepill" id="modePill" data-m="warn">● warn</span>
+    <button class="iconbtn" id="themeBtn" title="Light / dark" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <div class="cols">
+    <!-- LEFT COLUMN -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- SEATS -->
+      <section class="card">
+        <h2>Seats <span class="n" id="seatCount">0</span></h2>
+        <div class="body">
+          <div class="stat" id="stats"></div>
+          <div class="toolbar">
+            <input class="search" id="search" placeholder="Search email or note…" autocomplete="off">
+            <select id="filterPlan" style="width:auto">
+              <option value="">All plans</option>
+              <option value="free">Free</option>
+              <option value="trial">Trial</option>
+              <option value="paid">Paid</option>
+              <option value="blocked">Blocked</option>
+            </select>
+            <button class="btn sm primary" id="addSeatBtn">＋ Add seat</button>
+          </div>
+          <div style="overflow:auto">
+            <table>
+              <thead><tr><th>Email</th><th>Plan</th><th>Note</th><th></th></tr></thead>
+              <tbody id="seatRows"></tbody>
+            </table>
+          </div>
+          <div class="empty hide" id="seatEmpty">No seats yet. Everyone falls to the <b>default</b> plan below.</div>
+        </div>
+      </section>
+
+      <!-- REGISTRATIONS -->
+      <section class="card">
+        <h2>Who signed up</h2>
+        <div class="body">
+          <p class="hint" style="margin-top:0">Kraken reports each new activation (email + machine) to your registration sheet.
+            Paste the emails here — or fetch them from the sheet's URL — then add any as a seat in one click.</p>
+          <div class="split two">
+            <div>
+              <label for="regUrl">Registration feed URL <span style="font-weight:400">(optional — CSV or JSON)</span></label>
+              <div class="row">
+                <div class="field"><input id="regUrl" placeholder="https://…/exec?format=csv" autocomplete="off"></div>
+                <button class="btn sm" id="regFetchBtn">Fetch</button>
+              </div>
+            </div>
+            <div>
+              <label for="regPaste">…or paste emails (one per line)</label>
+              <textarea id="regPaste" rows="2" placeholder="someone@example.com&#10;other@example.com"></textarea>
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px"><button class="btn sm" id="regLoadPaste">Load pasted</button></div>
+          <div id="regList" style="margin-top:12px"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- POLICY -->
+      <section class="card">
+        <h2>Policy</h2>
+        <div class="body">
+          <label>Enforcement mode</label>
+          <div class="seg" id="modeSeg" role="group" aria-label="mode">
+            <button data-v="off" type="button">Off</button>
+            <button data-v="warn" type="button">Warn</button>
+            <button data-v="enforce" type="button">Enforce</button>
+          </div>
+          <p class="hint" id="modeHint"></p>
+          <div class="split two" style="margin-top:12px">
+            <div>
+              <label for="defPlan">Default for everyone not listed</label>
+              <select id="defPlan">
+                <option value="trial">Trial</option>
+                <option value="free">Free</option>
+                <option value="paid">Paid</option>
+                <option value="blocked">Blocked (invite-only)</option>
+              </select>
+            </div>
+            <div>
+              <label for="issued">Issued date</label>
+              <input id="issued" type="date">
+            </div>
+          </div>
+          <div class="split two" style="margin-top:12px">
+            <div><label for="trialDays">Trial length (days)</label><input id="trialDays" type="number" min="0" step="1" value="30"></div>
+            <div><label for="graceDays">Offline grace (days)</label><input id="graceDays" type="number" min="0" step="1" value="14"></div>
+          </div>
+          <div style="margin-top:12px">
+            <label class="flip"><input type="checkbox" id="expEnable"> Expire this access file on a date</label>
+            <input id="expDate" type="date" class="hide" style="margin-top:8px">
+          </div>
+        </div>
+      </section>
+
+      <!-- SIGNING KEY -->
+      <section class="card">
+        <h2>Signing key</h2>
+        <div class="body">
+          <div class="keystate">
+            <span>Key loaded:</span><span class="badge idle" id="keyBadge">none</span>
+            <span class="grow"></span>
+            <span class="badge idle" id="matchBadge" title="Does this key match the one inside shipped Kraken?">—</span>
+          </div>
+          <div class="row">
+            <button class="btn sm" id="genKey">Generate new</button>
+            <button class="btn sm" id="importKey">Import…</button>
+            <button class="btn sm" id="backupKey" disabled>Back up</button>
+            <button class="btn sm danger ghost" id="clearKey" disabled>Forget</button>
+          </div>
+          <div style="margin-top:12px">
+            <label>Public key (SPKI base64) — this is what goes inside Kraken</label>
+            <div class="kv" id="pubOut">—</div>
+            <div class="row" style="margin-top:8px"><button class="btn sm" id="copyPub" disabled>Copy public key</button></div>
+          </div>
+          <label class="flip" style="margin-top:12px"><input type="checkbox" id="rememberKey"> Remember this key in this browser</label>
+          <p class="hint" id="keyNote"></p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- OUTPUT -->
+  <section class="card" style="margin-top:16px">
+    <h2>access.json <span class="n" id="signState">unsigned</span></h2>
+    <div class="body">
+      <div class="note" id="buildNote" style="margin-bottom:12px"></div>
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn primary" id="signBtn">Sign &amp; build access.json</button>
+        <button class="btn" id="verifyBtn" disabled>Verify signature</button>
+        <span class="grow"></span>
+        <button class="btn" id="importJson">Import existing access.json</button>
+      </div>
+      <pre class="out" id="jsonOut">Set a policy and sign to produce the file.</pre>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="downloadBtn" disabled>⬇ Download access.json</button>
+        <button class="btn" id="copyJson" disabled>Copy</button>
+        <span class="grow"></span>
+        <span class="hint" id="publishHint">Commit the file to the root of <b>kraken-releases</b> → that's the feed Kraken reads.</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    Runs entirely in your browser. Your private key never leaves this machine.
+    <br>Kraken access feed · signed with ECDSA&nbsp;P-256 / SHA-256 (ES256).
+  </div>
+</div>
+
+<!-- seat dialog -->
+<dialog id="seatDlg">
+  <div class="body">
+    <h3 id="seatDlgTitle">Add seat</h3>
+    <p class="hint" style="margin-top:0">A seat overrides the default for one person's email.</p>
+    <div style="margin-top:6px"><label for="sEmail">Email</label><input id="sEmail" type="email" placeholder="name@example.com" autocomplete="off"></div>
+    <div style="margin-top:12px"><label for="sPlan">Plan</label>
+      <select id="sPlan">
+        <option value="paid">Paid — full access</option>
+        <option value="free">Free — full access, no charge</option>
+        <option value="trial">Trial — time-limited</option>
+        <option value="blocked">Blocked — cannot run</option>
+      </select></div>
+    <div style="margin-top:12px"><label for="sNote">Note <span style="font-weight:400">(optional, local only)</span></label><input id="sNote" placeholder="e.g. paid 2026-10, invoice #12" autocomplete="off"></div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button class="btn ghost" id="seatCancel" type="button">Cancel</button>
+      <button class="btn primary" id="seatSave" type="button">Save seat</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- import key dialog -->
+<dialog id="keyDlg">
+  <div class="body">
+    <h3>Import signing key</h3>
+    <p class="hint" style="margin-top:0">Paste your private key as JWK (the backup this tool makes) or PKCS#8 PEM.</p>
+    <textarea id="keyText" rows="7" placeholder='{"kty":"EC","crv":"P-256","d":"…","x":"…","y":"…"}'></textarea>
+    <div class="row" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn ghost" id="keyCancel" type="button">Cancel</button>
+      <button class="btn primary" id="keyLoad" type="button">Load key</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- import json dialog -->
+<dialog id="jsonDlg">
+  <div class="body">
+    <h3>Import existing access.json</h3>
+    <p class="hint" style="margin-top:0">Loads the policy and seats back in so you can keep editing. The signature is rebuilt when you re-sign.</p>
+    <textarea id="jsonText" rows="7" placeholder='{"payloadText":"…","sig":"…","alg":"ES256","key":"…"}'></textarea>
+    <div class="row" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn ghost" id="jsonCancel" type="button">Cancel</button>
+      <button class="btn primary" id="jsonLoad" type="button">Load</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+/* ────────────────────────────────────────────────────────────────────────
+   Kraken Access — local licensing control panel.
+
+   It produces exactly the access.json the shipped add-in verifies:
+     { "payloadText": "<json string, signed byte-for-byte>",
+       "sig": "<base64 raw r||s, ECDSA P-256 / SHA-256>",
+       "alg": "ES256",
+       "key": "<SPKI base64 public key>" }
+
+   payloadText shape (keys in this order, no spaces):
+     {"schema":1,"issued":"YYYY-MM-DD",
+      "policy":{"mode":"off|warn|enforce","default":"<plan>",
+                "trialDays":N,"graceDays":N[,"expires":"YYYY-MM-DD"]},
+      "users":{ "<email>":"<plan>", … }}
+
+   NOTE on the per-seat value: the published access.json ships with
+   "users":{} (empty), and the add-in's string constants are obfuscated, so
+   the exact per-seat shape could not be confirmed from the binary. This tool
+   writes the simplest, most likely form — a bare plan string per email,
+   mirroring policy.default. Verify one seat in WARN mode (which blocks nobody
+   and only records who WOULD be blocked) before switching to Enforce.
+   If your add-in expects an object per seat, change seatValue() below.
+   ──────────────────────────────────────────────────────────────────────── */
+
+const SHIPPED_PUBKEY = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEERq97fwsmUd39x59XsTz//WNBoEmOfiZWPo8gNMs6gGTl/bIa1af7GMkrxcLRMjVpV09f6vG/QUQX8feUJQccQ==";
+const LSK = "kraken.admin.v1";
+const $ = s => document.querySelector(s);
+
+const state = {
+  mode: "warn", def: "trial", trialDays: 30, graceDays: 14,
+  issued: todayISO(), expires: "",
+  seats: [],            // {email, plan, note}
+  priv: null, pub: null, pubB64: "", remember: false
+};
+
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+/* per-seat value written into users{} — change here if your build needs an object */
+function seatValue(seat){ return seat.plan; }
+
+/* ---------- base64 helpers ---------- */
+function abToB64(buf){ const u=new Uint8Array(buf); let s=""; for(const b of u) s+=String.fromCharCode(b); return btoa(s); }
+function b64ToU8(b64){ const s=atob(b64.trim()); const u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; }
+
+/* ---------- WebCrypto ---------- */
+const subtle = (window.crypto && crypto.subtle) || null;
+function needCrypto(){
+  if(!subtle){ alert("This browser can't sign here.\n\nOpen this file over https:// or from a local file:// path (not inside a sandbox), then reload."); return false; }
+  return true;
+}
+async function genKeypair(){
+  const kp = await subtle.generateKey({name:"ECDSA",namedCurve:"P-256"}, true, ["sign","verify"]);
+  return kp;
+}
+async function pubToB64(pub){ return abToB64(await subtle.exportKey("spki", pub)); }
+async function importPrivJwk(jwk){
+  const priv = await subtle.importKey("jwk", jwk, {name:"ECDSA",namedCurve:"P-256"}, true, ["sign"]);
+  const pubJwk = {kty:"EC", crv:"P-256", x:jwk.x, y:jwk.y, ext:true};
+  const pub = await subtle.importKey("jwk", pubJwk, {name:"ECDSA",namedCurve:"P-256"}, true, ["verify"]);
+  return {priv, pub};
+}
+function pemToDer(pem){
+  const body = pem.replace(/-----[^-]+-----/g,"").replace(/\s+/g,"");
+  return b64ToU8(body);
+}
+async function importPrivPkcs8(pem){
+  const der = pemToDer(pem);
+  const priv = await subtle.importKey("pkcs8", der, {name:"ECDSA",namedCurve:"P-256"}, true, ["sign"]);
+  // derive public via jwk round-trip
+  const jwk = await subtle.exportKey("jwk", priv);
+  const pub = await subtle.importKey("jwk", {kty:"EC",crv:"P-256",x:jwk.x,y:jwk.y,ext:true},
+                                      {name:"ECDSA",namedCurve:"P-256"}, true, ["verify"]);
+  return {priv, pub};
+}
+async function signText(priv, text){
+  const data = new TextEncoder().encode(text);
+  const sig = await subtle.sign({name:"ECDSA",hash:"SHA-256"}, priv, data);
+  return abToB64(sig);
+}
+async function verifyText(pub, text, sigB64){
+  const data = new TextEncoder().encode(text);
+  return subtle.verify({name:"ECDSA",hash:"SHA-256"}, pub, b64ToU8(sigB64), data);
+}
+
+/* ---------- payload build (exact byte shape) ---------- */
+function buildPayloadText(){
+  const policy = { mode: state.mode, "default": state.def,
+                   trialDays: int(state.trialDays), graceDays: int(state.graceDays) };
+  if(state.expires) policy.expires = state.expires;
+  const users = {};
+  for(const s of state.seats){ if(s.email) users[s.email.trim().toLowerCase()] = seatValue(s); }
+  // assemble manually to keep a stable, compact key order
+  const obj = { schema:1, issued: state.issued || todayISO(), policy, users };
+  return JSON.stringify(obj);
+}
+function int(v){ v=parseInt(v,10); return isNaN(v)?0:Math.max(0,v); }
+
+let lastFile = null;   // {payloadText, sig, alg, key}
+
+async function signAndBuild(){
+  if(!needCrypto()) return;
+  if(!state.priv){ alert("Load or generate a signing key first."); return; }
+  const payloadText = buildPayloadText();
+  const sig = await signText(state.priv, payloadText);
+  lastFile = { payloadText, sig, alg:"ES256", key: state.pubB64 };
+  renderOutput(true);
+  // prove it verifies against its own key
+  const ok = await verifyText(state.pub, payloadText, sig);
+  $("#signState").textContent = ok ? "signed ✓" : "signed (verify failed!)";
+}
+
+function renderOutput(signed){
+  if(lastFile){
+    $("#jsonOut").textContent = JSON.stringify(lastFile, null, 2);
+    $("#downloadBtn").disabled = false; $("#copyJson").disabled = false; $("#verifyBtn").disabled = false;
+  } else {
+    $("#jsonOut").textContent = "Preview (unsigned):\n\n" + pretty(buildPayloadText());
+    $("#downloadBtn").disabled = true; $("#copyJson").disabled = true; $("#verifyBtn").disabled = true;
+    $("#signState").textContent = "unsigned";
+  }
+  updateBuildNote();
+}
+function pretty(s){ try{ return JSON.stringify(JSON.parse(s), null, 2); }catch(e){ return s; } }
+
+function updateBuildNote(){
+  const n = $("#buildNote");
+  const matched = state.pubB64 && state.pubB64 === SHIPPED_PUBKEY;
+  if(!state.priv){ n.className="note warn"; n.innerHTML="No signing key yet. Generate one, or import the key you first used — it must match the key inside Kraken, or signatures are rejected."; return; }
+  if(state.mode==="enforce" && !matched){
+    n.className="note danger";
+    n.innerHTML="⚠ Enforce mode, but this key does <b>not</b> match the key shipped in Kraken. The add-in will reject this file and could lock users out. Use the original key, or rebuild Kraken with this key, before enforcing.";
+    return;
+  }
+  if(!matched){
+    n.className="note warn";
+    n.innerHTML="This key doesn't match the one shipped in Kraken (fine while you're setting up). Signatures validate only once Kraken carries this public key.";
+    return;
+  }
+  n.className="note ok";
+  n.innerHTML="✓ This key matches the one inside shipped Kraken — your signed file will be accepted.";
+}
+
+/* ---------- seats ---------- */
+function renderSeats(){
+  const q = $("#search").value.trim().toLowerCase();
+  const fp = $("#filterPlan").value;
+  const tb = $("#seatRows"); tb.innerHTML="";
+  const counts = {free:0,trial:0,paid:0,blocked:0};
+  for(const s of state.seats) counts[s.plan] = (counts[s.plan]||0)+1;
+  const list = state.seats.filter(s=>{
+    if(fp && s.plan!==fp) return false;
+    if(q && !(s.email.toLowerCase().includes(q) || (s.note||"").toLowerCase().includes(q))) return false;
+    return true;
+  });
+  for(const s of list){
+    const i = state.seats.indexOf(s);
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td class="email">${esc(s.email)}</td>`+
+      `<td><span class="plan ${s.plan}">${planLabel(s.plan)}</span></td>`+
+      `<td class="note-c">${esc(s.note||"")}</td>`+
+      `<td><div class="rowacts">`+
+        `<button class="linkbtn" title="Edit" data-edit="${i}">✎</button>`+
+        `<button class="linkbtn" title="Remove" data-del="${i}">🗑</button>`+
+      `</div></td>`;
+    tb.appendChild(tr);
+  }
+  $("#seatEmpty").classList.toggle("hide", state.seats.length!==0);
+  $("#seatCount").textContent = state.seats.length;
+  $("#stats").innerHTML = ["paid","trial","free","blocked"].map(p=>
+    `<span class="chip"><span class="dot d-${p}"></span>${planLabel(p)} <b>${counts[p]||0}</b></span>`).join("");
+  tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openSeat(+b.dataset.edit));
+  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ state.seats.splice(+b.dataset.del,1); save(); renderSeats(); renderOutput(); });
+}
+function planLabel(p){ return {free:"Free",trial:"Trial",paid:"Paid",blocked:"Blocked"}[p]||p; }
+function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+let editIdx = -1;
+function openSeat(i){
+  editIdx = i;
+  const s = i>=0 ? state.seats[i] : {email:"",plan:"paid",note:""};
+  $("#seatDlgTitle").textContent = i>=0 ? "Edit seat" : "Add seat";
+  $("#sEmail").value=s.email; $("#sPlan").value=s.plan; $("#sNote").value=s.note||"";
+  $("#seatDlg").showModal(); $("#sEmail").focus();
+}
+function saveSeat(){
+  const email = $("#sEmail").value.trim().toLowerCase();
+  if(!email || !email.includes("@")){ alert("Enter a valid email."); return; }
+  const seat = {email, plan:$("#sPlan").value, note:$("#sNote").value.trim()};
+  const dup = state.seats.findIndex(x=>x.email===email);
+  if(editIdx>=0){ state.seats[editIdx]=seat; }
+  else if(dup>=0){ state.seats[dup]=seat; }
+  else { state.seats.push(seat); }
+  $("#seatDlg").close(); save(); renderSeats(); renderOutput();
+}
+
+/* ---------- registrations ---------- */
+let regEmails = [];
+function renderReg(){
+  const box = $("#regList"); box.innerHTML="";
+  if(!regEmails.length){ return; }
+  const known = new Set(state.seats.map(s=>s.email));
+  const head = document.createElement("div"); head.className="hint"; head.style.margin="0 0 8px";
+  head.textContent = regEmails.length+" registration(s):";
+  box.appendChild(head);
+  for(const e of regEmails){
+    const row = document.createElement("div");
+    row.className="row"; row.style.cssText="justify-content:space-between;align-items:center;border-bottom:1px solid var(--line-soft);padding:6px 0";
+    const left=document.createElement("span"); left.style.cssText="font-weight:600;word-break:break-all"; left.textContent=e;
+    const right=document.createElement("div"); right.className="rowacts";
+    if(known.has(e)){ const b=document.createElement("span"); b.className="badge ok"; b.textContent="seated"; right.appendChild(b); }
+    else {
+      for(const p of ["paid","free","trial","blocked"]){
+        const btn=document.createElement("button"); btn.className="btn sm"; btn.textContent="+ "+planLabel(p);
+        btn.onclick=()=>{ state.seats.push({email:e,plan:p,note:"from signup"}); save(); renderSeats(); renderOutput(); renderReg(); };
+        right.appendChild(btn);
+      }
+    }
+    row.appendChild(left); row.appendChild(right); box.appendChild(row);
+  }
+}
+function parseEmails(text){
+  const set=new Set();
+  (text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)||[]).forEach(e=>set.add(e.toLowerCase()));
+  return [...set];
+}
+
+/* ---------- persistence ---------- */
+function save(){
+  try{
+    const d = { mode:state.mode, def:state.def, trialDays:state.trialDays, graceDays:state.graceDays,
+                issued:state.issued, expires:state.expires, seats:state.seats, remember:state.remember };
+    if(state.remember && state.privJwk) d.privJwk = state.privJwk;
+    localStorage.setItem(LSK, JSON.stringify(d));
+  }catch(e){}
+}
+async function load(){
+  let d=null; try{ d=JSON.parse(localStorage.getItem(LSK)||"null"); }catch(e){}
+  if(!d) return;
+  Object.assign(state, {mode:d.mode||"warn", def:d.def||"trial", trialDays:d.trialDays??30,
+    graceDays:d.graceDays??14, issued:d.issued||todayISO(), expires:d.expires||"",
+    seats:Array.isArray(d.seats)?d.seats:[], remember:!!d.remember});
+  if(d.remember && d.privJwk && subtle){
+    try{ const {priv,pub}=await importPrivJwk(d.privJwk); state.priv=priv; state.pub=pub;
+      state.privJwk=d.privJwk; state.pubB64=await pubToB64(pub); }catch(e){}
+  }
+}
+
+/* ---------- key UI ---------- */
+async function refreshKeyUI(){
+  const have = !!state.priv;
+  $("#keyBadge").textContent = have? "ready" : "none";
+  $("#keyBadge").className = "badge "+(have?"ok":"idle");
+  $("#pubOut").textContent = state.pubB64 || "—";
+  $("#copyPub").disabled = !have; $("#backupKey").disabled = !have; $("#clearKey").disabled = !have;
+  const mb = $("#matchBadge");
+  if(!have){ mb.className="badge idle"; mb.textContent="—"; }
+  else if(state.pubB64===SHIPPED_PUBKEY){ mb.className="badge ok"; mb.textContent="matches Kraken"; }
+  else { mb.className="badge no"; mb.textContent="≠ shipped key"; }
+  $("#keyNote").innerHTML = have
+    ? "Back this key up and keep it safe — it's the only thing that can authorise seats. Rotating it means rebuilding Kraken with the new public key."
+    : "No key in memory. If you signed access files before, import that same key — a different key won't be trusted by installed copies.";
+  updateBuildNote();
+}
+async function setKey(priv, pub){
+  state.priv=priv; state.pub=pub;
+  state.pubB64 = await pubToB64(pub);
+  try{ state.privJwk = await subtle.exportKey("jwk", priv); }catch(e){ state.privJwk=null; }
+  if(state.remember) save();
+  refreshKeyUI();
+}
+
+/* ---------- mode UI ---------- */
+const MODE_HINT = {
+  off:"Licensing is inactive. Everyone runs. Use this to pause enforcement entirely.",
+  warn:"Nobody is blocked. Kraken records who WOULD be blocked — the safe way to confirm your list before charging.",
+  enforce:"Live. Blocked and expired seats cannot run the tools. Switch here only once Warn looks right."
+};
+function setMode(m){
+  state.mode=m;
+  document.querySelectorAll("#modeSeg button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.v===m)));
+  $("#modeHint").textContent = MODE_HINT[m];
+  const pill=$("#modePill"); pill.dataset.m=m; pill.textContent="● "+m;
+  save(); renderOutput();
+}
+
+/* ---------- wire up ---------- */
+function bindInputs(){
+  $("#defPlan").onchange = e=>{ state.def=e.target.value; save(); renderOutput(); };
+  $("#trialDays").oninput = e=>{ state.trialDays=e.target.value; save(); renderOutput(); };
+  $("#graceDays").oninput = e=>{ state.graceDays=e.target.value; save(); renderOutput(); };
+  $("#issued").onchange = e=>{ state.issued=e.target.value; save(); renderOutput(); };
+  $("#expEnable").onchange = e=>{ $("#expDate").classList.toggle("hide", !e.target.checked);
+    if(!e.target.checked){ state.expires=""; } else if($("#expDate").value){ state.expires=$("#expDate").value; }
+    save(); renderOutput(); };
+  $("#expDate").onchange = e=>{ state.expires=e.target.value; save(); renderOutput(); };
+  document.querySelectorAll("#modeSeg button").forEach(b=> b.onclick=()=>setMode(b.dataset.v));
+
+  $("#search").oninput = renderSeats; $("#filterPlan").onchange = renderSeats;
+  $("#addSeatBtn").onclick = ()=>openSeat(-1);
+  $("#seatSave").onclick = saveSeat; $("#seatCancel").onclick = ()=>$("#seatDlg").close();
+  $("#sEmail").addEventListener("keydown",e=>{ if(e.key==="Enter") saveSeat(); });
+
+  $("#genKey").onclick = async()=>{ if(!needCrypto())return; const kp=await genKeypair(); await setKey(kp.privateKey,kp.publicKey);
+    alert("New key made. Back it up now (Back up) — and remember: Kraken must ship with THIS public key for its signatures to be accepted."); };
+  $("#importKey").onclick = ()=>{ $("#keyText").value=""; $("#keyDlg").showModal(); };
+  $("#keyCancel").onclick = ()=>$("#keyDlg").close();
+  $("#keyLoad").onclick = async()=>{
+    if(!needCrypto())return;
+    const t=$("#keyText").value.trim();
+    try{
+      let res;
+      if(t.includes("BEGIN")) res=await importPrivPkcs8(t);
+      else res=await importPrivJwk(JSON.parse(t));
+      await setKey(res.priv,res.pub); $("#keyDlg").close();
+    }catch(e){ alert("Couldn't read that key: "+e.message); }
+  };
+  $("#backupKey").onclick = async()=>{
+    if(!state.privJwk){ alert("No key."); return; }
+    downloadFile("kraken-signing-key.jwk.json", JSON.stringify(state.privJwk,null,2));
+  };
+  $("#clearKey").onclick = ()=>{ if(!confirm("Forget the key from this browser? Make sure you have a backup."))return;
+    state.priv=state.pub=null; state.pubB64=""; state.privJwk=null; save(); refreshKeyUI(); renderOutput(); };
+  $("#copyPub").onclick = ()=>copy(state.pubB64);
+  $("#rememberKey").onchange = e=>{ state.remember=e.target.checked; save(); };
+
+  $("#signBtn").onclick = signAndBuild;
+  $("#verifyBtn").onclick = async()=>{ if(!lastFile)return;
+    const ok = await verifyText(state.pub, lastFile.payloadText, lastFile.sig);
+    alert(ok? "Signature verifies against the loaded key ✓":"Signature does NOT verify ✗"); };
+  $("#downloadBtn").onclick = ()=>{ if(lastFile) downloadFile("access.json", JSON.stringify(lastFile,null,2)); };
+  $("#copyJson").onclick = ()=>{ if(lastFile) copy(JSON.stringify(lastFile,null,2)); };
+
+  $("#importJson").onclick = ()=>{ $("#jsonText").value=""; $("#jsonDlg").showModal(); };
+  $("#jsonCancel").onclick = ()=>$("#jsonDlg").close();
+  $("#jsonLoad").onclick = ()=>{ try{ loadFromAccessJson(JSON.parse($("#jsonText").value)); $("#jsonDlg").close(); }
+    catch(e){ alert("Not valid access.json: "+e.message); } };
+
+  $("#regFetchBtn").onclick = fetchReg;
+  $("#regLoadPaste").onclick = ()=>{ regEmails=parseEmails($("#regPaste").value); renderReg(); };
+
+  $("#themeBtn").onclick = toggleTheme;
+}
+
+function loadFromAccessJson(file){
+  const p = JSON.parse(file.payloadText);
+  state.issued = p.issued || todayISO();
+  const pol = p.policy||{};
+  state.mode = pol.mode||"warn"; state.def = pol["default"]||"trial";
+  state.trialDays = pol.trialDays??30; state.graceDays = pol.graceDays??14;
+  state.expires = pol.expires||"";
+  state.seats = Object.entries(p.users||{}).map(([email,v])=>({
+    email, plan: (typeof v==="string"?v:(v&&v.plan)||"paid"), note:"" }));
+  // reflect to UI
+  $("#defPlan").value=state.def; $("#trialDays").value=state.trialDays; $("#graceDays").value=state.graceDays;
+  $("#issued").value=state.issued; $("#expEnable").checked=!!state.expires;
+  $("#expDate").classList.toggle("hide",!state.expires); if(state.expires)$("#expDate").value=state.expires;
+  setMode(state.mode); save(); renderSeats(); renderOutput();
+  if(file.key && file.key!==SHIPPED_PUBKEY && file.key!==state.pubB64)
+    alert("Loaded. Note: this file was signed with a different public key than the one shipped in Kraken.");
+}
+
+async function fetchReg(){
+  const url=$("#regUrl").value.trim(); if(!url){ alert("Enter the feed URL, or paste emails instead."); return; }
+  try{
+    const r=await fetch(url,{mode:"cors"}); const t=await r.text();
+    regEmails=parseEmails(t);
+    if(!regEmails.length) alert("Fetched, but found no emails in the response.");
+    renderReg();
+  }catch(e){ alert("Couldn't fetch (often CORS). Open the sheet, copy the emails, and paste them instead.\n\n"+e.message); }
+}
+
+/* ---------- misc ---------- */
+function downloadFile(name, text){
+  const blob=new Blob([text],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+function copy(text){ (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject())
+  .then(()=>toast("Copied")).catch(()=>{ prompt("Copy:",text); }); }
+let toastT=null;
+function toast(m){ let el=$("#toast"); if(!el){ el=document.createElement("div"); el.id="toast";
+  el.style.cssText="position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:var(--shadow);z-index:9"; document.body.appendChild(el); }
+  el.textContent=m; el.style.opacity="1"; clearTimeout(toastT); toastT=setTimeout(()=>el.style.opacity="0",1400); }
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute("data-theme");
+  const next = cur==="dark"?"light":(cur==="light"?"dark":(matchMedia("(prefers-color-scheme:dark)").matches?"light":"dark"));
+  document.documentElement.setAttribute("data-theme",next);
+  try{ localStorage.setItem(LSK+".theme",next); }catch(e){}
+}
+
+/* ---------- boot ---------- */
+(async function init(){
+  try{ const t=localStorage.getItem(LSK+".theme"); if(t) document.documentElement.setAttribute("data-theme",t); }catch(e){}
+  await load();
+  // reflect state to inputs
+  $("#defPlan").value=state.def; $("#trialDays").value=state.trialDays; $("#graceDays").value=state.graceDays;
+  $("#issued").value=state.issued||todayISO(); $("#rememberKey").checked=state.remember;
+  if(state.expires){ $("#expEnable").checked=true; $("#expDate").classList.remove("hide"); $("#expDate").value=state.expires; }
+  bindInputs(); setMode(state.mode); renderSeats(); await refreshKeyUI(); renderOutput();
+  if(!subtle){ $("#buildNote").className="note danger";
+    $("#buildNote").innerHTML="This page isn't in a secure context, so it can't sign. Open it from https:// or a local file, then reload."; }
+})();
+</script>
+</body>
+</html>
