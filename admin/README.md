@@ -76,8 +76,9 @@ same signing key as `access.json`:
 
 Per message: `id` (stable, so a dismissal can be remembered), `title`, `body`,
 `level` (`info`/`warn`/`urgent`), **`all:true`** for everyone *or* **`to:[…]`**
-a list of emails, optional `until` (stop showing after this date), and
-`dismissible`.
+a list of emails, optional `from` (don't show before this date) and `until`
+(stop showing after this date), and `dismissible`. The composer shows a live
+preview and marks each message **active / scheduled / expired**.
 
 ### ⚠ The add-in must read it — not shipped yet
 
@@ -91,7 +92,8 @@ needs (to add to `Updater`/notification code):
 2. Verify `sig` over `payloadText` with the embedded public key (same code
    path as the access file). Reject if it doesn't verify.
 3. For each message, show it when `all == true` **or** `to` contains the
-   signed-in account email, and (if `until` is set) today ≤ `until`.
+   signed-in account email, and (if `from`/`until` are set) `from` ≤ today ≤
+   `until`.
 4. Show each `id` once; if `dismissible`, remember the dismissed `id` in the
    local settings/state file so it isn't shown again. Map `level` to the
    existing toast levels.

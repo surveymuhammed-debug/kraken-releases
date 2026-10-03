@@ -334,12 +334,15 @@
           <input id="msgTitle" placeholder="e.g. Your trial ends in 3 days" autocomplete="off">
           <label for="msgBody" style="margin-top:12px">Message</label>
           <textarea id="msgBody" rows="3" style="font-family:var(--sans);font-size:14px" placeholder="What you want them to see…"></textarea>
+          <label for="msgLevel" style="margin-top:12px">Level</label>
+          <select id="msgLevel"><option value="info">Info</option><option value="warn">Warning</option><option value="urgent">Urgent</option></select>
           <div class="split two" style="margin-top:12px">
-            <div><label for="msgLevel">Level</label>
-              <select id="msgLevel"><option value="info">Info</option><option value="warn">Warning</option><option value="urgent">Urgent</option></select></div>
+            <div><label for="msgFrom">Show from <span style="font-weight:400">(optional)</span></label><input id="msgFrom" type="date"></div>
             <div><label for="msgUntil">Show until <span style="font-weight:400">(optional)</span></label><input id="msgUntil" type="date"></div>
           </div>
           <label class="flip" style="margin-top:12px"><input type="checkbox" id="msgDismiss" checked> User can dismiss it</label>
+          <label style="margin-top:12px">Preview</label>
+          <div id="msgPreview"></div>
         </div>
         <div>
           <label class="flip"><input type="checkbox" id="msgAll"> Send to everyone</label>
@@ -718,14 +721,15 @@ function saveSeat(){
      {"schema":1,"issued":"YYYY-MM-DD","messages":[
         {"id":"<stable id>","title":"…","body":"…","level":"info|warn|urgent",
          "all":true            // OR  "to":["a@x.com","b@x.com"]
+        [,"from":"YYYY-MM-DD"]       // don't show before this date
         [,"until":"YYYY-MM-DD"]      // stop showing after this date
          ,"dismissible":true}        // may the user dismiss it
      ]}
 
    The add-in (future build) fetches this file, verifies sig against its
    embedded key, then for each message where (all || to includes my email)
-   and today <= until, shows it once — remembering dismissals by id. The
-   shipped 2.9.1 DLL does not read this file yet; see admin/README.md.
+   and from <= today <= until, shows it once — remembering dismissals by id.
+   The shipped 2.9.1 DLL does not read this file yet; see admin/README.md.
    ──────────────────────────────────────────────────────────────────────── */
 let composeTo = [];     // transient recipients being composed
 let editMsgId = null;
@@ -751,9 +755,27 @@ function addComposeTo(){
 function clearCompose(){
   editMsgId=null; composeTo=[];
   $("#msgTitle").value=""; $("#msgBody").value=""; $("#msgLevel").value="info";
-  $("#msgUntil").value=""; $("#msgDismiss").checked=true; $("#msgAll").checked=false;
-  $("#msgToWrap").style.opacity="1"; renderComposeTo();
+  $("#msgFrom").value=""; $("#msgUntil").value=""; $("#msgDismiss").checked=true; $("#msgAll").checked=false;
+  $("#msgToWrap").style.opacity="1"; renderComposeTo(); updateMsgPreview();
   $("#msgAdd").textContent="＋ Add message";
+}
+function updateMsgPreview(){
+  const box=$("#msgPreview"); if(!box) return;
+  const title=$("#msgTitle").value.trim(), body=$("#msgBody").value.trim(), level=$("#msgLevel").value;
+  if(!title && !body){ box.innerHTML='<div class="hint" style="margin:0">Nothing to preview yet.</div>'; return; }
+  const color = level==="urgent"?"var(--blocked)":(level==="warn"?"var(--trial)":"var(--free)");
+  const bg = level==="urgent"?"var(--blocked-bg)":(level==="warn"?"var(--trial-bg)":"var(--free-bg)");
+  box.innerHTML = `<div style="border-left:4px solid ${color};background:${bg};border-radius:8px;padding:10px 12px">`+
+    `<div style="font-weight:700;color:${color};font-size:11px;text-transform:uppercase;letter-spacing:.4px">${esc(level)}</div>`+
+    (title?`<div style="font-weight:700;margin-top:2px">${esc(title)}</div>`:"")+
+    (body?`<div style="margin-top:4px;white-space:pre-wrap">${esc(body)}</div>`:"")+
+    `</div>`;
+}
+function msgStatus(m){
+  const t=todayISO();
+  if(m.until && m.until < t) return {label:"expired", color:"var(--ink-soft)"};
+  if(m.from && m.from > t) return {label:"scheduled", color:"var(--trial)"};
+  return {label:"active", color:"var(--paid)"};
 }
 function addOrUpdateMsg(){
   const title=$("#msgTitle").value.trim(), body=$("#msgBody").value.trim();
@@ -762,7 +784,7 @@ function addOrUpdateMsg(){
   if(!all && composeTo.length===0){ alert("Pick at least one recipient, or turn on “Send to everyone”."); return; }
   const m = { id: editMsgId || newId(), title, body, level:$("#msgLevel").value,
               all, to: all? [] : composeTo.slice(),
-              until: $("#msgUntil").value || "", dismissible: $("#msgDismiss").checked };
+              from: $("#msgFrom").value || "", until: $("#msgUntil").value || "", dismissible: $("#msgDismiss").checked };
   const i = state.messages.findIndex(x=>x.id===m.id);
   const who = m.all?"everyone":`${m.to.length} user(s)`;
   if(i>=0){ state.messages[i]=m; logEvent("message",`Edited message “${m.title||m.body.slice(0,24)}” → ${who}`); }
@@ -773,8 +795,8 @@ function editMsg(id){
   const m=state.messages.find(x=>x.id===id); if(!m) return;
   editMsgId=m.id; composeTo=m.to.slice();
   $("#msgTitle").value=m.title; $("#msgBody").value=m.body; $("#msgLevel").value=m.level;
-  $("#msgUntil").value=m.until||""; $("#msgDismiss").checked=m.dismissible!==false; $("#msgAll").checked=!!m.all;
-  $("#msgToWrap").style.opacity = m.all? ".5":"1"; renderComposeTo();
+  $("#msgFrom").value=m.from||""; $("#msgUntil").value=m.until||""; $("#msgDismiss").checked=m.dismissible!==false; $("#msgAll").checked=!!m.all;
+  $("#msgToWrap").style.opacity = m.all? ".5":"1"; renderComposeTo(); updateMsgPreview();
   $("#msgAdd").textContent="Save changes";
   $("#msgTitle").scrollIntoView({behavior:"smooth",block:"center"}); $("#msgTitle").focus();
 }
@@ -784,14 +806,17 @@ function renderMessages(){
   $("#msgEmpty").classList.toggle("hide", state.messages.length!==0);
   for(const m of state.messages){
     const who = m.all ? "Everyone" : (m.to.length+" recipient"+(m.to.length===1?"":"s"));
+    const st = msgStatus(m);
+    const win = (m.from?"from "+esc(m.from):"") + (m.from&&m.until?" ":"") + (m.until?"until "+esc(m.until):"");
     const card=document.createElement("div");
     card.style.cssText="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--panel-2)";
     const lvlColor = m.level==="urgent"?"var(--blocked)":(m.level==="warn"?"var(--trial)":"var(--free)");
     card.innerHTML =
-      `<div style="display:flex;align-items:center;gap:8px">`+
+      `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`+
         `<span class="badge" style="background:transparent;color:${lvlColor};border:1px solid currentColor">${m.level}</span>`+
-        `<b style="flex:1">${esc(m.title||"(no title)")}</b>`+
-        `<span class="hint">${who}${m.until?" · until "+esc(m.until):""}</span>`+
+        `<span class="badge" style="background:transparent;color:${st.color};border:1px solid currentColor">${st.label}</span>`+
+        `<b style="flex:1;min-width:120px">${esc(m.title||"(no title)")}</b>`+
+        `<span class="hint">${who}${win?" · "+win:""}</span>`+
       `</div>`+
       (m.body?`<div class="hint" style="margin-top:6px;color:var(--ink)">${esc(m.body)}</div>`:"")+
       (!m.all && m.to.length?`<div class="hint" style="margin-top:6px;word-break:break-all">${m.to.map(esc).join(", ")}</div>`:"")+
@@ -808,6 +833,7 @@ function buildMessagesText(){
   const msgs = state.messages.map(m=>{
     const o = {id:m.id, title:m.title, body:m.body, level:m.level};
     if(m.all) o.all=true; else o.to=m.to.map(e=>e.toLowerCase());
+    if(m.from) o.from=m.from;
     if(m.until) o.until=m.until;
     o.dismissible = m.dismissible!==false;
     return o;
@@ -1010,6 +1036,7 @@ function bindInputs(){
   $("#regLoadPaste").onclick = ()=>{ regEmails=parseEmails($("#regPaste").value); renderReg(); };
 
   // messages
+  ["msgTitle","msgBody","msgLevel"].forEach(id=>{ const el=$("#"+id); el.addEventListener("input",updateMsgPreview); el.addEventListener("change",updateMsgPreview); });
   $("#msgToAdd").onclick = addComposeTo;
   $("#msgTo").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); addComposeTo(); } });
   $("#msgAll").onchange = e=>{ $("#msgToWrap").style.opacity = e.target.checked? ".5":"1"; };
@@ -1199,7 +1226,7 @@ function toggleTheme(){
   $("#issued").value=state.issued||todayISO(); $("#rememberKey").checked=state.remember;
   if(state.expires){ $("#expEnable").checked=true; $("#expDate").classList.remove("hide"); $("#expDate").value=state.expires; }
   $("#urlAccess").textContent = FEED_BASE+"access.json"; $("#urlMsg").textContent = FEED_BASE+"messages.json";
-  bindInputs(); setMode(state.mode, true); renderSeats(); renderMessages(); renderMsgOutput(); renderLog(); await refreshKeyUI(); renderOutput();
+  bindInputs(); setMode(state.mode, true); renderSeats(); renderMessages(); renderMsgOutput(); updateMsgPreview(); renderLog(); await refreshKeyUI(); renderOutput();
   if(!subtle){ $("#buildNote").className="note danger";
     $("#buildNote").innerHTML="This page isn't in a secure context, so it can't sign. Open it from https:// or a local file, then reload."; }
 })();
