@@ -292,6 +292,63 @@
     </div>
   </section>
 
+  <!-- MESSAGES -->
+  <section class="card" style="margin-top:16px">
+    <h2>Messages <span class="n" id="msgCount">0</span></h2>
+    <div class="body">
+      <p class="hint" style="margin-top:0">Send a notice to <b>certain users</b> (or everyone). It's published as a signed
+        <code>messages.json</code> on the same feed, and Kraken shows each message to the user(s) you target.</p>
+      <div class="split two">
+        <div>
+          <label for="msgTitle">Title</label>
+          <input id="msgTitle" placeholder="e.g. Your trial ends in 3 days" autocomplete="off">
+          <label for="msgBody" style="margin-top:12px">Message</label>
+          <textarea id="msgBody" rows="3" style="font-family:var(--sans);font-size:14px" placeholder="What you want them to see…"></textarea>
+          <div class="split two" style="margin-top:12px">
+            <div><label for="msgLevel">Level</label>
+              <select id="msgLevel"><option value="info">Info</option><option value="warn">Warning</option><option value="urgent">Urgent</option></select></div>
+            <div><label for="msgUntil">Show until <span style="font-weight:400">(optional)</span></label><input id="msgUntil" type="date"></div>
+          </div>
+          <label class="flip" style="margin-top:12px"><input type="checkbox" id="msgDismiss" checked> User can dismiss it</label>
+        </div>
+        <div>
+          <label class="flip"><input type="checkbox" id="msgAll"> Send to everyone</label>
+          <div id="msgToWrap" style="margin-top:12px">
+            <label for="msgTo">Recipients</label>
+            <div class="row">
+              <div class="field"><input id="msgTo" list="seatEmails" placeholder="email@example.com" autocomplete="off"></div>
+              <button class="btn sm" id="msgToAdd" type="button">Add</button>
+            </div>
+            <datalist id="seatEmails"></datalist>
+            <div id="msgToChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"></div>
+            <p class="hint" style="margin-top:8px">Pick from your seats or type any email. Leave empty + “everyone” off = message goes to nobody.</p>
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="msgAdd">＋ Add message</button>
+        <button class="btn ghost" id="msgClear" type="button">Clear form</button>
+      </div>
+
+      <div id="msgRows" style="margin-top:14px"></div>
+      <div class="empty hide" id="msgEmpty">No messages queued yet.</div>
+
+      <div class="note" id="msgBuildNote" style="margin:14px 0 12px"></div>
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn primary" id="msgSignBtn">Sign &amp; build messages.json</button>
+        <span class="grow"></span>
+        <span class="hint" id="msgState">unsigned</span>
+      </div>
+      <pre class="out" id="msgJsonOut">Add a message and sign to produce the file.</pre>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="msgDownload" disabled>⬇ Download messages.json</button>
+        <button class="btn" id="msgCopy" disabled>Copy</button>
+        <span class="grow"></span>
+        <span class="hint">Commit <b>messages.json</b> to the repo root, next to access.json.</span>
+      </div>
+    </div>
+  </section>
+
   <div class="foot">
     Runs entirely in your browser. Your private key never leaves this machine.
     <br>Kraken access feed · signed with ECDSA&nbsp;P-256 / SHA-256 (ES256).
@@ -379,6 +436,7 @@ const state = {
   mode: "warn", def: "trial", trialDays: 30, graceDays: 14,
   issued: todayISO(), expires: "",
   seats: [],            // {email, plan, note}
+  messages: [],         // {id, title, body, level, all, to:[], until, dismissible}
   priv: null, pub: null, pubB64: "", remember: false
 };
 
@@ -516,6 +574,7 @@ function renderSeats(){
   }
   $("#seatEmpty").classList.toggle("hide", state.seats.length!==0);
   $("#seatCount").textContent = state.seats.length;
+  const dl=$("#seatEmails"); if(dl){ dl.innerHTML=""; for(const s of state.seats){ const o=document.createElement("option"); o.value=s.email; dl.appendChild(o); } }
   $("#stats").innerHTML = ["paid","trial","free","blocked"].map(p=>
     `<span class="chip"><span class="dot d-${p}"></span>${planLabel(p)} <b>${counts[p]||0}</b></span>`).join("");
   tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openSeat(+b.dataset.edit));
@@ -541,6 +600,135 @@ function saveSeat(){
   else if(dup>=0){ state.seats[dup]=seat; }
   else { state.seats.push(seat); }
   $("#seatDlg").close(); save(); renderSeats(); renderOutput();
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   MESSAGES — a signed messages.json on the same feed, targeted by email.
+
+   messages.json has the same envelope as access.json:
+     { "payloadText":"<signed json>", "sig":"…", "alg":"ES256", "key":"<spki>" }
+
+   payloadText:
+     {"schema":1,"issued":"YYYY-MM-DD","messages":[
+        {"id":"<stable id>","title":"…","body":"…","level":"info|warn|urgent",
+         "all":true            // OR  "to":["a@x.com","b@x.com"]
+        [,"until":"YYYY-MM-DD"]      // stop showing after this date
+         ,"dismissible":true}        // may the user dismiss it
+     ]}
+
+   The add-in (future build) fetches this file, verifies sig against its
+   embedded key, then for each message where (all || to includes my email)
+   and today <= until, shows it once — remembering dismissals by id. The
+   shipped 2.9.1 DLL does not read this file yet; see admin/README.md.
+   ──────────────────────────────────────────────────────────────────────── */
+let composeTo = [];     // transient recipients being composed
+let editMsgId = null;
+
+function newId(){ return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
+
+function renderComposeTo(){
+  const box = $("#msgToChips"); box.innerHTML="";
+  for(const e of composeTo){
+    const chip=document.createElement("span"); chip.className="chip";
+    chip.innerHTML = `<span>${esc(e)}</span>`;
+    const x=document.createElement("button"); x.className="linkbtn"; x.textContent="✕"; x.style.padding="0 2px";
+    x.onclick=()=>{ composeTo=composeTo.filter(y=>y!==e); renderComposeTo(); };
+    chip.appendChild(x); box.appendChild(chip);
+  }
+}
+function addComposeTo(){
+  const v=$("#msgTo").value.trim().toLowerCase();
+  if(!v || !v.includes("@")){ $("#msgTo").focus(); return; }
+  if(!composeTo.includes(v)) composeTo.push(v);
+  $("#msgTo").value=""; renderComposeTo(); $("#msgTo").focus();
+}
+function clearCompose(){
+  editMsgId=null; composeTo=[];
+  $("#msgTitle").value=""; $("#msgBody").value=""; $("#msgLevel").value="info";
+  $("#msgUntil").value=""; $("#msgDismiss").checked=true; $("#msgAll").checked=false;
+  $("#msgToWrap").style.opacity="1"; renderComposeTo();
+  $("#msgAdd").textContent="＋ Add message";
+}
+function addOrUpdateMsg(){
+  const title=$("#msgTitle").value.trim(), body=$("#msgBody").value.trim();
+  if(!title && !body){ alert("Write a title or a message first."); return; }
+  const all=$("#msgAll").checked;
+  if(!all && composeTo.length===0){ alert("Pick at least one recipient, or turn on “Send to everyone”."); return; }
+  const m = { id: editMsgId || newId(), title, body, level:$("#msgLevel").value,
+              all, to: all? [] : composeTo.slice(),
+              until: $("#msgUntil").value || "", dismissible: $("#msgDismiss").checked };
+  const i = state.messages.findIndex(x=>x.id===m.id);
+  if(i>=0) state.messages[i]=m; else state.messages.push(m);
+  clearCompose(); save(); renderMessages(); renderMsgOutput();
+}
+function editMsg(id){
+  const m=state.messages.find(x=>x.id===id); if(!m) return;
+  editMsgId=m.id; composeTo=m.to.slice();
+  $("#msgTitle").value=m.title; $("#msgBody").value=m.body; $("#msgLevel").value=m.level;
+  $("#msgUntil").value=m.until||""; $("#msgDismiss").checked=m.dismissible!==false; $("#msgAll").checked=!!m.all;
+  $("#msgToWrap").style.opacity = m.all? ".5":"1"; renderComposeTo();
+  $("#msgAdd").textContent="Save changes";
+  $("#msgTitle").scrollIntoView({behavior:"smooth",block:"center"}); $("#msgTitle").focus();
+}
+function renderMessages(){
+  const box=$("#msgRows"); box.innerHTML="";
+  $("#msgCount").textContent = state.messages.length;
+  $("#msgEmpty").classList.toggle("hide", state.messages.length!==0);
+  for(const m of state.messages){
+    const who = m.all ? "Everyone" : (m.to.length+" recipient"+(m.to.length===1?"":"s"));
+    const card=document.createElement("div");
+    card.style.cssText="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--panel-2)";
+    const lvlColor = m.level==="urgent"?"var(--blocked)":(m.level==="warn"?"var(--trial)":"var(--free)");
+    card.innerHTML =
+      `<div style="display:flex;align-items:center;gap:8px">`+
+        `<span class="badge" style="background:transparent;color:${lvlColor};border:1px solid currentColor">${m.level}</span>`+
+        `<b style="flex:1">${esc(m.title||"(no title)")}</b>`+
+        `<span class="hint">${who}${m.until?" · until "+esc(m.until):""}</span>`+
+      `</div>`+
+      (m.body?`<div class="hint" style="margin-top:6px;color:var(--ink)">${esc(m.body)}</div>`:"")+
+      (!m.all && m.to.length?`<div class="hint" style="margin-top:6px;word-break:break-all">${m.to.map(esc).join(", ")}</div>`:"")+
+      `<div class="rowacts" style="margin-top:8px">`+
+        `<button class="linkbtn" title="Edit" data-emsg="${m.id}">✎</button>`+
+        `<button class="linkbtn" title="Remove" data-dmsg="${m.id}">🗑</button>`+
+      `</div>`;
+    box.appendChild(card);
+  }
+  box.querySelectorAll("[data-emsg]").forEach(b=>b.onclick=()=>editMsg(b.dataset.emsg));
+  box.querySelectorAll("[data-dmsg]").forEach(b=>b.onclick=()=>{ state.messages=state.messages.filter(x=>x.id!==b.dataset.dmsg); save(); renderMessages(); renderMsgOutput(); });
+}
+function buildMessagesText(){
+  const msgs = state.messages.map(m=>{
+    const o = {id:m.id, title:m.title, body:m.body, level:m.level};
+    if(m.all) o.all=true; else o.to=m.to.map(e=>e.toLowerCase());
+    if(m.until) o.until=m.until;
+    o.dismissible = m.dismissible!==false;
+    return o;
+  });
+  return JSON.stringify({ schema:1, issued: state.issued||todayISO(), messages: msgs });
+}
+let lastMsgFile=null;
+async function signAndBuildMessages(){
+  if(!needCrypto()) return;
+  if(!state.priv){ alert("Load or generate a signing key first (Signing key panel)."); return; }
+  if(!state.messages.length){ alert("Add at least one message first."); return; }
+  const payloadText = buildMessagesText();
+  const sig = await signText(state.priv, payloadText);
+  lastMsgFile = { payloadText, sig, alg:"ES256", key: state.pubB64 };
+  renderMsgOutput(true);
+  const ok = await verifyText(state.pub, payloadText, sig);
+  $("#msgState").textContent = ok ? "signed ✓" : "signed (verify failed!)";
+}
+function renderMsgOutput(){
+  const n=$("#msgBuildNote");
+  n.className="note warn";
+  n.innerHTML="Heads-up: the currently shipped Kraken doesn't read <code>messages.json</code> yet. This builds the signed file so it's ready; delivery turns on in the next add-in build. See admin/README.md.";
+  if(lastMsgFile){
+    $("#msgJsonOut").textContent = JSON.stringify(lastMsgFile,null,2);
+    $("#msgDownload").disabled=false; $("#msgCopy").disabled=false;
+  } else {
+    $("#msgJsonOut").textContent = state.messages.length ? "Preview (unsigned):\n\n"+pretty(buildMessagesText()) : "Add a message and sign to produce the file.";
+    $("#msgDownload").disabled=true; $("#msgCopy").disabled=true; $("#msgState").textContent="unsigned";
+  }
 }
 
 /* ---------- registrations ---------- */
@@ -578,7 +766,7 @@ function parseEmails(text){
 function save(){
   try{
     const d = { mode:state.mode, def:state.def, trialDays:state.trialDays, graceDays:state.graceDays,
-                issued:state.issued, expires:state.expires, seats:state.seats, remember:state.remember };
+                issued:state.issued, expires:state.expires, seats:state.seats, messages:state.messages, remember:state.remember };
     if(state.remember && state.privJwk) d.privJwk = state.privJwk;
     localStorage.setItem(LSK, JSON.stringify(d));
   }catch(e){}
@@ -588,7 +776,7 @@ async function load(){
   if(!d) return;
   Object.assign(state, {mode:d.mode||"warn", def:d.def||"trial", trialDays:d.trialDays??30,
     graceDays:d.graceDays??14, issued:d.issued||todayISO(), expires:d.expires||"",
-    seats:Array.isArray(d.seats)?d.seats:[], remember:!!d.remember});
+    seats:Array.isArray(d.seats)?d.seats:[], messages:Array.isArray(d.messages)?d.messages:[], remember:!!d.remember});
   if(d.remember && d.privJwk && subtle){
     try{ const {priv,pub}=await importPrivJwk(d.privJwk); state.priv=priv; state.pub=pub;
       state.privJwk=d.privJwk; state.pubB64=await pubToB64(pub); }catch(e){}
@@ -688,6 +876,16 @@ function bindInputs(){
   $("#regFetchBtn").onclick = fetchReg;
   $("#regLoadPaste").onclick = ()=>{ regEmails=parseEmails($("#regPaste").value); renderReg(); };
 
+  // messages
+  $("#msgToAdd").onclick = addComposeTo;
+  $("#msgTo").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); addComposeTo(); } });
+  $("#msgAll").onchange = e=>{ $("#msgToWrap").style.opacity = e.target.checked? ".5":"1"; };
+  $("#msgAdd").onclick = addOrUpdateMsg;
+  $("#msgClear").onclick = clearCompose;
+  $("#msgSignBtn").onclick = signAndBuildMessages;
+  $("#msgDownload").onclick = ()=>{ if(lastMsgFile) downloadFile("messages.json", JSON.stringify(lastMsgFile,null,2)); };
+  $("#msgCopy").onclick = ()=>{ if(lastMsgFile) copy(JSON.stringify(lastMsgFile,null,2)); };
+
   $("#themeBtn").onclick = toggleTheme;
 }
 
@@ -756,7 +954,7 @@ function toggleTheme(){
   $("#defPlan").value=state.def; $("#trialDays").value=state.trialDays; $("#graceDays").value=state.graceDays;
   $("#issued").value=state.issued||todayISO(); $("#rememberKey").checked=state.remember;
   if(state.expires){ $("#expEnable").checked=true; $("#expDate").classList.remove("hide"); $("#expDate").value=state.expires; }
-  bindInputs(); setMode(state.mode); renderSeats(); await refreshKeyUI(); renderOutput();
+  bindInputs(); setMode(state.mode); renderSeats(); renderMessages(); renderMsgOutput(); await refreshKeyUI(); renderOutput();
   if(!subtle){ $("#buildNote").className="note danger";
     $("#buildNote").innerHTML="This page isn't in a secure context, so it can't sign. Open it from https:// or a local file, then reload."; }
 })();

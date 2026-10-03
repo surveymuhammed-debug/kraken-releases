@@ -60,3 +60,41 @@ string (mirroring `policy.default`). The shipped `access.json` ships with an
 empty `users` map, so if a future build expects an object per seat instead,
 change `seatValue()` near the top of the script — and verify one seat in Warn
 mode before enforcing, which costs nobody their afternoon if the shape is off.
+
+## Messages — notices to certain users
+
+The **Messages** section composes a signed `messages.json` for the same feed,
+so you can push a notice to specific people (or everyone). Same envelope and
+same signing key as `access.json`:
+
+```json
+{
+  "payloadText": "{\"schema\":1,\"issued\":\"YYYY-MM-DD\",\"messages\":[{\"id\":\"m1\",\"title\":\"Your trial ends soon\",\"body\":\"3 days left.\",\"level\":\"warn\",\"to\":[\"someone@example.com\"],\"until\":\"2026-11-01\",\"dismissible\":true}]}",
+  "sig": "…", "alg": "ES256", "key": "<SPKI base64 public key>"
+}
+```
+
+Per message: `id` (stable, so a dismissal can be remembered), `title`, `body`,
+`level` (`info`/`warn`/`urgent`), **`all:true`** for everyone *or* **`to:[…]`**
+a list of emails, optional `until` (stop showing after this date), and
+`dismissible`.
+
+### ⚠ The add-in must read it — not shipped yet
+
+The currently shipped Kraken (2.9.1) does **not** read `messages.json`. The
+panel builds and signs the file so it's ready, but nothing reaches users until
+a Kraken build is published that fetches and shows it. The reader the add-in
+needs (to add to `Updater`/notification code):
+
+1. Fetch `messages.json` from the feed root alongside `latest.txt` /
+   `access.json`.
+2. Verify `sig` over `payloadText` with the embedded public key (same code
+   path as the access file). Reject if it doesn't verify.
+3. For each message, show it when `all == true` **or** `to` contains the
+   signed-in account email, and (if `until` is set) today ≤ `until`.
+4. Show each `id` once; if `dismissible`, remember the dismissed `id` in the
+   local settings/state file so it isn't shown again. Map `level` to the
+   existing toast levels.
+
+That reader is a small, self-contained add-in change; it needs the Kraken
+source repo (not in this releases repo).
