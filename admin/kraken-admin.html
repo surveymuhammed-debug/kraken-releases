@@ -666,7 +666,7 @@ function bindInputs(){
   };
   $("#backupKey").onclick = async()=>{
     if(!state.privJwk){ alert("No key."); return; }
-    downloadFile("kraken-signing-key.jwk.json", JSON.stringify(state.privJwk,null,2));
+    downloadFile("kraken-signing-key.json", JSON.stringify(state.privJwk,null,2));
   };
   $("#clearKey").onclick = ()=>{ if(!confirm("Forget the key from this browser? Make sure you have a backup."))return;
     state.priv=state.pub=null; state.pubB64=""; state.privJwk=null; save(); refreshKeyUI(); renderOutput(); };
@@ -720,7 +720,17 @@ async function fetchReg(){
 }
 
 /* ---------- misc ---------- */
-function downloadFile(name, text){
+async function downloadFile(name, text){
+  // In the claude.ai viewer, a plain <a download> does nothing — saving goes
+  // through the downloads capability. On a local file:// / https page that
+  // capability is absent, so fall back to the normal anchor download.
+  try{
+    if(window.claude && typeof claude.use==="function"){
+      const dl = await claude.use("downloads");
+      if(dl){ const r = await dl.save({filename:name, data:text});
+        if(r && r.status==="saved") toast("Saved"); return; }
+    }
+  }catch(e){ if(e && e.code==="declined"){ return; } /* else fall through */ }
   const blob=new Blob([text],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
