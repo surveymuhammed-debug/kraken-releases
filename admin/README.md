@@ -33,6 +33,8 @@ trust.
 
 - **Seats** — list a person's email and set their plan: **paid**, **free**,
   **trial**, or **blocked**. Anyone not listed falls to the **default** plan.
+  Add one at a time, paste many with **Bulk add**, or **import/export CSV**
+  (`email, plan, note`) to manage the list in a spreadsheet.
 - **Policy** — pick the enforcement **mode**, the default plan, trial length,
   offline grace, and an optional expiry date for the file itself.
 - **Signing key** — generate a key, or import the one you already used. The

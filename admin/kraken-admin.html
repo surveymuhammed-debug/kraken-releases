@@ -170,6 +170,8 @@
               <option value="paid">Paid</option>
               <option value="blocked">Blocked</option>
             </select>
+            <button class="btn sm" id="exportCsvBtn">⬇ CSV</button>
+            <button class="btn sm" id="importCsvBtn">Import CSV</button>
             <button class="btn sm" id="bulkSeatBtn">Bulk add</button>
             <button class="btn sm primary" id="addSeatBtn">＋ Add seat</button>
           </div>
@@ -453,6 +455,19 @@
     <div class="row" style="margin-top:14px;justify-content:flex-end">
       <button class="btn ghost" id="backupCancel" type="button">Cancel</button>
       <button class="btn primary" id="backupLoad" type="button">Replace &amp; load</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- CSV import dialog -->
+<dialog id="csvDlg">
+  <div class="body">
+    <h3>Import seats from CSV</h3>
+    <p class="hint" style="margin-top:0">Columns: <code>email, plan, note</code> — plan is paid / free / trial / blocked (anything else becomes paid). A header row is optional. Existing seats are updated.</p>
+    <textarea id="csvText" rows="7" placeholder="email,plan,note&#10;alice@example.com,paid,invoice 12&#10;bob@example.com,blocked,refunded"></textarea>
+    <div class="row" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn ghost" id="csvCancel" type="button">Cancel</button>
+      <button class="btn primary" id="csvLoad" type="button">Import</button>
     </div>
   </div>
 </dialog>
@@ -1051,6 +1066,10 @@ function bindInputs(){
 
   $("#search").oninput = renderSeats; $("#filterPlan").onchange = renderSeats;
   $("#addSeatBtn").onclick = ()=>openSeat(-1);
+  $("#exportCsvBtn").onclick = exportSeatsCsv;
+  $("#importCsvBtn").onclick = ()=>{ $("#csvText").value=""; $("#csvDlg").showModal(); $("#csvText").focus(); };
+  $("#csvCancel").onclick = ()=>$("#csvDlg").close();
+  $("#csvLoad").onclick = ()=>importSeatsCsv($("#csvText").value);
   $("#bulkSeatBtn").onclick = ()=>{ $("#bulkText").value=""; $("#bulkDlg").showModal(); $("#bulkText").focus(); };
   $("#bulkCancel").onclick = ()=>$("#bulkDlg").close();
   $("#bulkSave").onclick = bulkAdd;
@@ -1238,6 +1257,44 @@ function importAll(obj){
   setMode(state.mode,true); save();
   renderSeats(); renderMessages(); renderMsgOutput(); renderLog(); renderOutput();
   logEvent("file","Imported full backup ("+state.seats.length+" seats, "+state.messages.length+" messages)");
+}
+/* ---------- seats CSV ---------- */
+const PLANS = ["free","trial","paid","blocked"];
+function csvCell(s){ s=String(s==null?"":s); return /[",\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function exportSeatsCsv(){
+  const rows = [["email","plan","note"]].concat(state.seats.map(s=>[s.email,s.plan,s.note||""]));
+  const csv = rows.map(r=>r.map(csvCell).join(",")).join("\r\n");
+  downloadFile("kraken-seats.csv", csv);
+  logEvent("seat","Exported "+state.seats.length+" seat(s) to CSV");
+}
+function parseCsv(text){
+  const rows=[]; let field="", row=[], inq=false;
+  for(let i=0;i<text.length;i++){ const c=text[i];
+    if(inq){ if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else inq=false; } else field+=c; }
+    else if(c==='"') inq=true;
+    else if(c===","){ row.push(field); field=""; }
+    else if(c==="\n"){ row.push(field); rows.push(row); row=[]; field=""; }
+    else if(c!=="\r") field+=c;
+  }
+  if(field!=="" || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r=>r.length && r.some(c=>c.trim()!==""));
+}
+function importSeatsCsv(text){
+  const rows = parseCsv(text);
+  if(!rows.length){ alert("No rows found."); return; }
+  if((rows[0][0]||"").trim().toLowerCase()==="email") rows.shift();
+  let added=0, updated=0, skipped=0;
+  for(const r of rows){
+    const email=(r[0]||"").trim().toLowerCase();
+    if(!email || !email.includes("@")){ skipped++; continue; }
+    let plan=(r[1]||"").trim().toLowerCase(); if(!PLANS.includes(plan)) plan="paid";
+    const note=(r[2]||"").trim();
+    const i=state.seats.findIndex(s=>s.email===email);
+    if(i>=0){ state.seats[i]={email,plan,note}; updated++; } else { state.seats.push({email,plan,note}); added++; }
+  }
+  logEvent("seat",`CSV import: ${added} added, ${updated} updated${skipped?", "+skipped+" skipped":""}`);
+  $("#csvDlg").close(); save(); renderSeats(); renderOutput();
+  if(skipped) alert(`Imported. ${skipped} row(s) were skipped (no valid email).`);
 }
 function bulkAdd(){
   const emails = parseEmails($("#bulkText").value); const plan = $("#bulkPlan").value;
