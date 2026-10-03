@@ -7,12 +7,27 @@ this repository (the feed).
 
 ## Open it
 
-- Double-click `kraken-admin.html` (opens as a local `file://` page), **or**
-- open the published link if you were given one.
+Three ways, all fully functional (including signing):
 
-Signing uses WebCrypto, which needs a *secure context*: a `file://` page or an
-`https://` page both work. If the page says it "can't sign here", it's running
-in a sandbox without crypto — reopen it from a real file or an https link.
+1. **Double-click `kraken-admin.html`** — opens as a local `file://` page.
+2. **Host it on your network** so other devices can use it — from this folder:
+   ```
+   node serve.mjs          (or: double-click serve-kraken-admin.cmd on Windows)
+   ```
+   It prints `http://<your-LAN-IP>:8080/`. Open that on this machine or any
+   device on the same network. Pass a port as the first argument to change it.
+3. **Open the published link** if you were given one.
+
+### Signing works everywhere — no HTTPS needed
+
+Signing prefers the browser's WebCrypto, which browsers only enable in a
+*secure context* (`file://`, `https://`, or `http://localhost`). On a plain
+`http://192.168.x.x` LAN address that is switched off — so the panel falls
+back to its **own built-in ECDSA P-256 / SHA-256 signer**. The signatures it
+produces are byte-identical in effect and verify under WebCrypto (and under
+Kraken's embedded key) exactly the same way, so you do **not** need a
+certificate or HTTPS to use it over the LAN. Host it only on a network you
+trust.
 
 ## What it does
 

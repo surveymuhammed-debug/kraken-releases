@@ -549,45 +549,108 @@ function seatValue(seat){ return seat.plan; }
 /* ---------- base64 helpers ---------- */
 function abToB64(buf){ const u=new Uint8Array(buf); let s=""; for(const b of u) s+=String.fromCharCode(b); return btoa(s); }
 function b64ToU8(b64){ const s=atob(b64.trim()); const u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; }
+function u8ToB64url(u){ return abToB64(u).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+function b64urlToU8(s){ s=String(s).replace(/-/g,"+").replace(/_/g,"/"); while(s.length%4)s+="="; return b64ToU8(s); }
+function bigToU8(x,len){ const u=new Uint8Array(len); for(let i=len-1;i>=0;i--){ u[i]=Number(x & 0xffn); x>>=8n; } return u; }
+function u8ToBig(u){ let x=0n; for(const b of u) x=(x<<8n)|BigInt(b); return x; }
 
-/* ---------- WebCrypto ---------- */
+/* ---------- pure-JS ECDSA P-256 + SHA-256 (fallback when WebCrypto is absent,
+   e.g. the page served over a plain http:// LAN IP — a non-secure context). --- */
+const P256 = (function(){
+  const p=0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn;
+  const a=0xffffffff00000001000000000000000000000000fffffffffffffffffffffffcn;
+  const n=0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  const Gx=0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296n;
+  const Gy=0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5n;
+  const G={x:Gx,y:Gy};
+  const mod=(x,m)=>{ x%=m; return x<0n?x+m:x; };
+  function inv(x,m){ let [lm,hm]=[1n,0n]; let [low,high]=[mod(x,m),m];
+    while(low>1n){ const r=high/low; [lm,hm]=[hm-lm*r,lm]; [low,high]=[high-low*r,low]; } return mod(lm,m); }
+  function dbl(P){ if(!P)return null; if(P.y===0n)return null;
+    const s=mod((3n*P.x*P.x+a)*inv(2n*P.y,p),p);
+    const x=mod(s*s-2n*P.x,p); return {x, y:mod(s*(P.x-x)-P.y,p)}; }
+  function add(P,Q){ if(!P)return Q; if(!Q)return P;
+    if(P.x===Q.x){ if(mod(P.y+Q.y,p)===0n) return null; return dbl(P); }
+    const s=mod((Q.y-P.y)*inv(mod(Q.x-P.x,p),p),p);
+    const x=mod(s*s-P.x-Q.x,p); return {x, y:mod(s*(P.x-x)-P.y,p)}; }
+  function mul(k,P){ let R=null, N=P; k=mod(k,n); while(k>0n){ if(k&1n)R=add(R,N); N=dbl(N); k>>=1n; } return R; }
+  function randScalar(){ while(true){ const u=new Uint8Array(32); crypto.getRandomValues(u); const k=u8ToBig(u); if(k>=1n && k<n) return k; } }
+  function sign(d, hash32){ const e=u8ToBig(hash32);
+    while(true){ const k=randScalar(); const R=mul(k,G); const r=mod(R.x,n); if(r===0n)continue;
+      let s=mod(inv(k,n)*(e+r*d),n); if(s===0n)continue; if(s>n/2n)s=n-s; // low-s
+      const out=new Uint8Array(64); out.set(bigToU8(r,32),0); out.set(bigToU8(s,32),32); return out; } }
+  function verify(Q, hash32, sig){ const r=u8ToBig(sig.slice(0,32)), s=u8ToBig(sig.slice(32,64));
+    if(r<1n||r>=n||s<1n||s>=n) return false; const e=u8ToBig(hash32); const w=inv(s,n);
+    const X=add(mul(mod(e*w,n),G), mul(mod(r*w,n),Q)); if(!X) return false; return mod(X.x,n)===r; }
+  function pubPoint(d){ return mul(d,G); }
+  return {n,G,mul,sign,verify,pubPoint,randScalar};
+})();
+function sha256(bytes){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const ml=bytes.length*8; const withOne=bytes.length+1; let padded=withOne; while(padded%64!==56)padded++;
+  const m=new Uint8Array(padded+8); m.set(bytes); m[bytes.length]=0x80;
+  const dv=new DataView(m.buffer); dv.setUint32(m.length-4, ml>>>0); dv.setUint32(m.length-8, Math.floor(ml/0x100000000));
+  const w=new Uint32Array(64); const rotr=(x,c)=>(x>>>c)|(x<<(32-c));
+  for(let i=0;i<m.length;i+=64){
+    for(let t=0;t<16;t++) w[t]=dv.getUint32(i+t*4);
+    for(let t=16;t<64;t++){ const s0=rotr(w[t-15],7)^rotr(w[t-15],18)^(w[t-15]>>>3); const s1=rotr(w[t-2],17)^rotr(w[t-2],19)^(w[t-2]>>>10); w[t]=(w[t-16]+s0+w[t-7]+s1)|0; }
+    let [aa,bb,cc,dd,ee,ff,gg,hh]=H;
+    for(let t=0;t<64;t++){ const S1=rotr(ee,6)^rotr(ee,11)^rotr(ee,25); const ch=(ee&ff)^(~ee&gg); const t1=(hh+S1+ch+K[t]+w[t])|0;
+      const S0=rotr(aa,2)^rotr(aa,13)^rotr(aa,22); const maj=(aa&bb)^(aa&cc)^(bb&cc); const t2=(S0+maj)|0;
+      hh=gg;gg=ff;ff=ee;ee=(dd+t1)|0;dd=cc;cc=bb;bb=aa;aa=(t1+t2)|0; }
+    H=[(H[0]+aa)|0,(H[1]+bb)|0,(H[2]+cc)|0,(H[3]+dd)|0,(H[4]+ee)|0,(H[5]+ff)|0,(H[6]+gg)|0,(H[7]+hh)|0];
+  }
+  const out=new Uint8Array(32); const odv=new DataView(out.buffer); for(let i=0;i<8;i++) odv.setUint32(i*4, H[i]>>>0); return out;
+}
+const SPKI_P256_PREFIX = b64ToU8("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE"); // 26-byte DER header for an EC P-256 public key
+function spkiFromPoint(Q){ const out=new Uint8Array(SPKI_P256_PREFIX.length+64); out.set(SPKI_P256_PREFIX,0);
+  out.set(bigToU8(Q.x,32), SPKI_P256_PREFIX.length); out.set(bigToU8(Q.y,32), SPKI_P256_PREFIX.length+32); return abToB64(out); }
+function jwkFromScalar(d,Q){ return {kty:"EC",crv:"P-256",d:u8ToB64url(bigToU8(d,32)),x:u8ToB64url(bigToU8(Q.x,32)),y:u8ToB64url(bigToU8(Q.y,32)),ext:true}; }
+
+/* ---------- WebCrypto (preferred) ---------- */
 const subtle = (window.crypto && crypto.subtle) || null;
-function needCrypto(){
-  if(!subtle){ alert("This browser can't sign here.\n\nOpen this file over https:// or from a local file:// path (not inside a sandbox), then reload."); return false; }
-  return true;
-}
+const USE_SUBTLE = !!subtle;
+function needCrypto(){ return true; } // signing works everywhere now: WebCrypto when available, pure-JS otherwise
 async function genKeypair(){
-  const kp = await subtle.generateKey({name:"ECDSA",namedCurve:"P-256"}, true, ["sign","verify"]);
-  return kp;
+  if(USE_SUBTLE) return await subtle.generateKey({name:"ECDSA",namedCurve:"P-256"}, true, ["sign","verify"]);
+  const d = P256.randScalar(); const Q = P256.pubPoint(d);
+  return { privateKey:{_pure:true, d, Q}, publicKey:{_pure:true, x:Q.x, y:Q.y} };
 }
-async function pubToB64(pub){ return abToB64(await subtle.exportKey("spki", pub)); }
+async function pubToB64(pub){
+  if(USE_SUBTLE) return abToB64(await subtle.exportKey("spki", pub));
+  return spkiFromPoint(pub);
+}
 async function importPrivJwk(jwk){
-  const priv = await subtle.importKey("jwk", jwk, {name:"ECDSA",namedCurve:"P-256"}, true, ["sign"]);
-  const pubJwk = {kty:"EC", crv:"P-256", x:jwk.x, y:jwk.y, ext:true};
-  const pub = await subtle.importKey("jwk", pubJwk, {name:"ECDSA",namedCurve:"P-256"}, true, ["verify"]);
-  return {priv, pub};
+  if(USE_SUBTLE){
+    const priv = await subtle.importKey("jwk", jwk, {name:"ECDSA",namedCurve:"P-256"}, true, ["sign"]);
+    const pub = await subtle.importKey("jwk", {kty:"EC",crv:"P-256",x:jwk.x,y:jwk.y,ext:true}, {name:"ECDSA",namedCurve:"P-256"}, true, ["verify"]);
+    return {priv, pub};
+  }
+  const d = u8ToBig(b64urlToU8(jwk.d)); const Q = P256.pubPoint(d);
+  return { priv:{_pure:true, d, Q}, pub:{_pure:true, x:Q.x, y:Q.y} };
 }
-function pemToDer(pem){
-  const body = pem.replace(/-----[^-]+-----/g,"").replace(/\s+/g,"");
-  return b64ToU8(body);
-}
+function pemToDer(pem){ return b64ToU8(pem.replace(/-----[^-]+-----/g,"").replace(/\s+/g,"")); }
 async function importPrivPkcs8(pem){
-  const der = pemToDer(pem);
-  const priv = await subtle.importKey("pkcs8", der, {name:"ECDSA",namedCurve:"P-256"}, true, ["sign"]);
-  // derive public via jwk round-trip
+  if(!USE_SUBTLE) throw new Error("PKCS#8 import needs WebCrypto; paste the JWK backup instead on a plain-http page");
+  const priv = await subtle.importKey("pkcs8", pemToDer(pem), {name:"ECDSA",namedCurve:"P-256"}, true, ["sign"]);
   const jwk = await subtle.exportKey("jwk", priv);
-  const pub = await subtle.importKey("jwk", {kty:"EC",crv:"P-256",x:jwk.x,y:jwk.y,ext:true},
-                                      {name:"ECDSA",namedCurve:"P-256"}, true, ["verify"]);
+  const pub = await subtle.importKey("jwk", {kty:"EC",crv:"P-256",x:jwk.x,y:jwk.y,ext:true}, {name:"ECDSA",namedCurve:"P-256"}, true, ["verify"]);
   return {priv, pub};
+}
+async function exportJwk(priv){
+  if(USE_SUBTLE) return await subtle.exportKey("jwk", priv);
+  return jwkFromScalar(priv.d, priv.Q);
 }
 async function signText(priv, text){
   const data = new TextEncoder().encode(text);
-  const sig = await subtle.sign({name:"ECDSA",hash:"SHA-256"}, priv, data);
-  return abToB64(sig);
+  if(USE_SUBTLE) return abToB64(await subtle.sign({name:"ECDSA",hash:"SHA-256"}, priv, data));
+  return abToB64(P256.sign(priv.d, sha256(data)));
 }
 async function verifyText(pub, text, sigB64){
   const data = new TextEncoder().encode(text);
-  return subtle.verify({name:"ECDSA",hash:"SHA-256"}, pub, b64ToU8(sigB64), data);
+  if(USE_SUBTLE) return subtle.verify({name:"ECDSA",hash:"SHA-256"}, pub, b64ToU8(sigB64), data);
+  return P256.verify({x:pub.x,y:pub.y}, sha256(data), b64ToU8(sigB64));
 }
 
 /* ---------- payload build (exact byte shape) ---------- */
@@ -940,7 +1003,7 @@ async function refreshKeyUI(){
 async function setKey(priv, pub){
   state.priv=priv; state.pub=pub;
   state.pubB64 = await pubToB64(pub);
-  try{ state.privJwk = await subtle.exportKey("jwk", priv); }catch(e){ state.privJwk=null; }
+  try{ state.privJwk = await exportJwk(priv); }catch(e){ state.privJwk=null; }
   if(state.remember) save();
   refreshKeyUI();
 }
@@ -1227,8 +1290,7 @@ function toggleTheme(){
   if(state.expires){ $("#expEnable").checked=true; $("#expDate").classList.remove("hide"); $("#expDate").value=state.expires; }
   $("#urlAccess").textContent = FEED_BASE+"access.json"; $("#urlMsg").textContent = FEED_BASE+"messages.json";
   bindInputs(); setMode(state.mode, true); renderSeats(); renderMessages(); renderMsgOutput(); updateMsgPreview(); renderLog(); await refreshKeyUI(); renderOutput();
-  if(!subtle){ $("#buildNote").className="note danger";
-    $("#buildNote").innerHTML="This page isn't in a secure context, so it can't sign. Open it from https:// or a local file, then reload."; }
+  if(!subtle){ logEvent("key","WebCrypto unavailable (non-secure context) — using built-in pure-JS signer"); }
 })();
 </script>
 </body>
