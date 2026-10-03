@@ -259,7 +259,7 @@
             <div class="field"><input id="simEmail" list="seatEmails" placeholder="email@example.com" autocomplete="off"></div>
             <button class="btn sm primary" id="simBtn">Check</button>
           </div>
-          <div id="simResult" style="margin-top:12px"></div>
+          <div id="simResult" role="status" aria-live="polite" style="margin-top:12px"></div>
         </div>
       </section>
 
@@ -307,7 +307,7 @@
   <section class="card" style="margin-top:16px">
     <h2>access.json <span class="n" id="signState">unsigned</span></h2>
     <div class="body">
-      <div class="note" id="buildNote" style="margin-bottom:12px"></div>
+      <div class="note" id="buildNote" role="status" aria-live="polite" style="margin-bottom:12px"></div>
       <div class="row" style="margin-bottom:12px">
         <button class="btn primary" id="signBtn">Sign &amp; build access.json</button>
         <button class="btn" id="verifyBtn" disabled>Verify signature</button>
@@ -368,7 +368,7 @@
       <div id="msgRows" style="margin-top:14px"></div>
       <div class="empty hide" id="msgEmpty">No messages queued yet.</div>
 
-      <div class="note" id="msgBuildNote" style="margin:14px 0 12px"></div>
+      <div class="note" id="msgBuildNote" role="status" aria-live="polite" style="margin:14px 0 12px"></div>
       <div class="row" style="margin-bottom:12px">
         <button class="btn primary" id="msgSignBtn">Sign &amp; build messages.json</button>
         <span class="grow"></span>
@@ -1142,6 +1142,15 @@ function bindInputs(){
   $("#logClear").onclick = ()=>{ if(!state.log.length) return; if(!confirm("Clear the activity log?")) return; state.log=[]; save(); renderLog(); };
 
   $("#themeBtn").onclick = toggleTheme;
+
+  // keyboard shortcuts
+  document.addEventListener("keydown", e=>{
+    const tag=(e.target&&e.target.tagName||"").toLowerCase();
+    const typing = tag==="input"||tag==="textarea"||tag==="select"||(e.target&&e.target.isContentEditable);
+    const openDlg = document.querySelector("dialog[open]");
+    if((e.ctrlKey||e.metaKey) && (e.key==="s"||e.key==="S")){ e.preventDefault(); if(!openDlg) signAndBuild(); return; }
+    if(e.key==="/" && !typing && !openDlg){ e.preventDefault(); $("#search").focus(); }
+  });
 }
 
 function loadFromAccessJson(file){
@@ -1328,6 +1337,7 @@ function copy(text){ (navigator.clipboard?navigator.clipboard.writeText(text):Pr
   .then(()=>toast("Copied")).catch(()=>{ prompt("Copy:",text); }); }
 let toastT=null;
 function toast(m){ let el=$("#toast"); if(!el){ el=document.createElement("div"); el.id="toast";
+  el.setAttribute("role","status"); el.setAttribute("aria-live","polite");
   el.style.cssText="position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:var(--shadow);z-index:9"; document.body.appendChild(el); }
   el.textContent=m; el.style.opacity="1"; clearTimeout(toastT); toastT=setTimeout(()=>el.style.opacity="0",1400); }
 function toggleTheme(){
