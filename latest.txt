@@ -1,10 +1,10 @@
-# Kraken update manifest - published 2026-11-21 14:59
+# Kraken update manifest - published 2026-11-21 17:00
 # Read by the Update button. file is relative to this manifest.
-version = 2.9.3
-file    = 2.9.3/MEPKit.dll
-sha256  = 66a4bcade4db9bd3bcef900fa4265f7ce2e9a06c7aa17fad94ab9a4b52f3e8c8
+version = 2.9.4
+file    = 2.9.4/MEPKit.dll
+sha256  = 1758c7c71bb1538dbb641acfd3f7ddb1de95d1cd2b845e846d4be66a20df42c2
 # Revit 2022-2024 run .NET Framework and need their own build.
-file48  = 2.9.3/MEPKit-net48.dll
-sha48   = 30e92b9cec2b7cfcd30539d2dfa9b0cfde8a70f23b98cf6713e0d9a8653358f7
+file48  = 2.9.4/MEPKit-net48.dll
+sha48   = 386ca3d833a602a89205000f780d6579cce5c7791a90ef05f9f24b9cd61dbd7d
 revit   = 2022
-notes   = Kraken 2.9.3 | New: messages from the Kraken team appear when Revit starts | The Claude button now shows your messages again on demand
+notes   = Kraken 2.9.4 | The Claude button opens instantly, even offline | A notice counts as read only after it has left the screen | Hover videos for Slope run, Settings and Update
