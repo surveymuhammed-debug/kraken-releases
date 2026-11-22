@@ -1,4 +1,4 @@
 # Kraken-Setup.exe - the installer checks this first and switches to a newer one.
-version = 1.0.0
+version = 1.0.1
 file    = setup/Kraken-Setup.exe
-sha256  = 3b5b0715e6f02da397033502e4da63fa4a1bc6fec920dc1089a02f9f9e2515fc
+sha256  = 955cbdcf2f138036dae9fa0d27273841674ea1f880cb024ad51731a6dfa90f9d

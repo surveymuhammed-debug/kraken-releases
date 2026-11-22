@@ -8,4 +8,4 @@ The same link always gives the newest version - nothing to update by hand.
 
 Already installed? Kraken's own **Update** button keeps it current.
 
-Current version: 2.10.1
+Current version: 2.10.2 (installer 1.0.1)

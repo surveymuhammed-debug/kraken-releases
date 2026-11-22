@@ -1,11 +1,11 @@
-# Kraken update manifest - published 2026-11-22 11:01
+# Kraken update manifest - published 2026-11-22 11:32
 # Read by the Update button. file is relative to this manifest.
-version = 2.10.1
-file    = 2.10.1/MEPKit.dll
-sha256  = 9d54f13b48bc1c161b87404dcb59d5dcf71468d92ce811300a6062676d829f27
+version = 2.10.2
+file    = 2.10.2/MEPKit.dll
+sha256  = d5894ac0e40f98ea2ea9a44ea34f44c4f264bffc2b6db46c819ff27ee11a3a01
 # Revit 2022-2024 run .NET Framework and need their own build.
-file48  = 2.10.1/MEPKit-net48.dll
-sha48   = 0d6072695dac429f012ee4696d29a423d85757ea15ec495b4ad125ce485ae414
+file48  = 2.10.2/MEPKit-net48.dll
+sha48   = 9ff69ff6eddd6f32089c2acfc1eeebeb0275e0075e31fa521e6763475e4d953b
 revit   = 2022
-notes   = Kraken 2.10.1 | Claude can now do ANY task in Revit, not only the built-in tools: it writes and runs Revit API code for you | Every change is previewed first and kept as one Undo | Claude can look up the exact Revit API of your version
-remind   = 2.10.1
+notes   = Kraken 2.10.2 | Updates now show up the moment they are published (GitHub's cache could hide a new version for half an hour) | Includes 2.10.1: Claude can do ANY task in Revit, previewed first and kept as one Undo
+remind   = 2.10.2
