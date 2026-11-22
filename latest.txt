@@ -1,10 +1,10 @@
-# Kraken update manifest - published 2026-11-21 17:00
+# Kraken update manifest - published 2026-11-22 02:35
 # Read by the Update button. file is relative to this manifest.
-version = 2.9.4
-file    = 2.9.4/MEPKit.dll
-sha256  = 1758c7c71bb1538dbb641acfd3f7ddb1de95d1cd2b845e846d4be66a20df42c2
+version = 2.10.0
+file    = 2.10.0/MEPKit.dll
+sha256  = 9f6cba6e67bbab98f35ba84719c60ee3a868affac6a80d836372f1540a64e8df
 # Revit 2022-2024 run .NET Framework and need their own build.
-file48  = 2.9.4/MEPKit-net48.dll
-sha48   = 386ca3d833a602a89205000f780d6579cce5c7791a90ef05f9f24b9cd61dbd7d
+file48  = 2.10.0/MEPKit-net48.dll
+sha48   = 2c3cabfb9047f0c14cfbefc108af52c39993a4bb72b521af276c605672d32553
 revit   = 2022
-notes   = Kraken 2.9.4 | The Claude button opens instantly, even offline | A notice counts as read only after it has left the screen | Hover videos for Slope run, Settings and Update
+notes   = Kraken 2.10.0 | New Claude button: switch it on and talk to Revit from Claude Desktop or Claude Code | Sprinkler layout, check, piping and NFPA sizing | Water supply sizing by fixture units or your own Excel method | Tags placed in free space, no repeats | New installer: Kraken-Setup.exe always installs the newest version
