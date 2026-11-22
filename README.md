@@ -7,3 +7,5 @@ It finds Revit 2023, 2024, 2025, 2026 (and 2027) on the computer and installs th
 The same link always gives the newest version - nothing to update by hand.
 
 Already installed? Kraken's own **Update** button keeps it current.
+
+Current version: 2.10.1
